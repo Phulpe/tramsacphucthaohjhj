@@ -52,8 +52,11 @@ const BADKEY_MOCK_PORT = PORT_BASE + 3;
 
 const APP_URL = `http://127.0.0.1:${APP_PORT}`;
 const OLLAMA_MODEL = 'qwen2.5:7b';
-const CLOUD_MODEL = 'llama-3.1-8b-instant';
+const CLOUD_MODEL = 'openai/gpt-oss-20b';
 const CLOUD_KEY = 'gsk_test_key_12345';
+/** Các IP giả để kiểm tra rate limit tách biệt giữa các "người dùng". */
+const LIMITED_IP = '203.0.113.10';
+const BYPASS_IP = '198.51.100.7';
 /** Cổng không tồn tại — dùng để giả lập "provider không kết nối được". */
 const DEAD_URL = 'http://127.0.0.1:9';
 
@@ -176,13 +179,50 @@ function parseDataStream(raw) {
     .join('');
 }
 
-/** Gửi một tin nhắn tới /api/chat. */
+/**
+ * Gửi một tin nhắn tới /api/chat.
+ *
+ * Luôn kèm `x-forwarded-for` để danh tính client là xác định. Không có header
+ * này thì rate limit rơi vào nhánh "unknown" — mọi người dùng chung một bộ đếm,
+ * và ta sẽ không kiểm tra được đúng cơ chế đếm theo IP.
+ */
 function postChat(messages, extraHeaders = {}) {
   return fetch(`${APP_URL}/api/chat`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...extraHeaders },
+    headers: {
+      'content-type': 'application/json',
+      'x-forwarded-for': '203.0.113.1',
+      ...extraHeaders,
+    },
     body: JSON.stringify({ messages }),
   });
+}
+
+/**
+ * Gọi một URL và parse JSON, có thử lại khi lỗi kết nối.
+ *
+ * Vì sao cần: trên ổ đĩa chậm, `next start` mất ~27 giây mới sẵn sàng và mỗi
+ * kịch bản lại restart app một lần. Một `fetch` trần rơi đúng vào khoảnh khắc
+ * server chưa kịp mở socket sẽ ném `TypeError: fetch failed` — thông báo này
+ * KHÔNG nói lỗi ở đâu, và biến một lần chạy đúng thành một lần đỏ không rõ
+ * nguyên nhân. Thử lại vài lần là đủ để loại bỏ lớp nhiễu đó.
+ */
+async function fetchWithRetry(url, { retries = 3, delayMs = 1000, headers } = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return await fetch(url, { cache: 'no-store', headers });
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) await sleep(delayMs);
+    }
+  }
+  throw new Error(`fetch thất bại sau ${retries} lần với ${url}: ${lastError?.message}`);
+}
+
+async function fetchJson(url, options) {
+  const response = await fetchWithRetry(url, options);
+  return response.json();
 }
 
 /** Khởi động app với env cho trước và chờ sẵn sàng. */
@@ -274,14 +314,14 @@ try {
   });
   check('Next server đã lên', true, APP_URL);
 
-  const home = await fetch(APP_URL, { cache: 'no-store' });
+  const home = await fetchWithRetry(APP_URL);
   const html = await home.text();
   check('A1. GET / trả HTTP 200', home.status === 200, `status=${home.status}`);
   check('A1. Trang chủ có lời chào', html.includes('Chào cậu'));
   check('A1. Trang chủ có placeholder', html.includes('Tớ đang nghe này'));
   check('A1. Trang chủ có tên app', html.includes('Trạm Sạc Cảm Xúc'));
 
-  const localHealth = await (await fetch(`${APP_URL}/api/health`, { cache: 'no-store' })).json();
+  const localHealth = await fetchJson(`${APP_URL}/api/health`);
   check('A2. health ok=true', localHealth.ok === true, String(localHealth.state));
   check('A2. provider=ollama', localHealth.provider === 'ollama', String(localHealth.provider));
   check('A2. cloud=false (chạy cục bộ)', localHealth.cloud === false, String(localHealth.cloud));
@@ -328,7 +368,7 @@ try {
     OLLAMA_BASE_URL: `${DEAD_URL}/api`,
     OLLAMA_MODEL,
   });
-  const offlineHealth = await (await fetch(`${APP_URL}/api/health?force=1`)).json();
+  const offlineHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
   check('A5. health báo offline', offlineHealth.ok === false && offlineHealth.state === 'offline');
   check('A5. health gợi ý "ollama serve"', String(offlineHealth.message).includes('ollama serve'));
 
@@ -354,13 +394,15 @@ try {
     // Cố tình đặt thấp để kiểm tra được nhánh 429 chỉ với vài request.
     RATE_LIMIT_MAX: '1',
     RATE_LIMIT_WINDOW: '60',
+    // IP này phải được bỏ qua hoàn toàn — dùng cho chính người vận hành test.
+    RATE_LIMIT_BYPASS_IPS: BYPASS_IP,
   });
 
   // Trước khi kiểm tra, chắc chắn server giả còn sống — nếu nó đã chết thì báo
   // lỗi ngay kèm log của chính nó, thay vì để lộ ra thành "connection refused".
   assertAlive(cloudMock, 'mock Groq');
 
-  const cloudHealth = await (await fetch(`${APP_URL}/api/health?force=1`)).json();
+  const cloudHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
   check('B1. health ok=true', cloudHealth.ok === true, String(cloudHealth.state));
   check('B1. provider=groq', cloudHealth.provider === 'groq', String(cloudHealth.provider));
   check('B1. nhãn provider là Groq', String(cloudHealth.providerLabel).includes('Groq'));
@@ -409,19 +451,68 @@ try {
   check('B3. stream=true', cloudDump.stream === true, String(cloudDump.stream));
   check('B3. Gửi đúng model', cloudDump.model === CLOUD_MODEL, String(cloudDump.model));
 
-  // Request #2 → phải bị chặn bởi rate limit (đã dùng hết 1 lượt)
-  const limited = await postChat([{ role: 'user', content: 'Còn đó không?' }]);
-  const limitedBody = await limited.json().catch(() => ({}));
-  check('B4. Request vượt hạn trả HTTP 429', limited.status === 429, `status=${limited.status}`);
+  // ---- B4. Rate limit: đúng cơ chế, đúng lý do, và có đường "ưu tiên" ----
+  //
+  // Kịch bản này tái hiện ĐÚNG sự cố thật đã gặp trên Vercel: request bị 429
+  // nhưng log không nói vì sao. Vì vậy ngoài mã trạng thái, ta còn kiểm tra
+  // header `X-RateLimit-Reason` và trường `detail` — hai thứ để chẩn đoán.
+  section('B4. RATE LIMIT — chặn đúng, nói rõ lý do, có danh sách ưu tiên');
+
+  const firstForIp = await postChat([{ role: 'user', content: 'Tin đầu tiên.' }], {
+    'x-forwarded-for': LIMITED_IP,
+  });
+  await firstForIp.text();
   check(
-    'B4. Có header Retry-After',
+    'B4a. Request đầu của IP này được phép (200)',
+    firstForIp.status === 200,
+    `status=${firstForIp.status}`,
+  );
+
+  const limited = await postChat([{ role: 'user', content: 'Còn đó không?' }], {
+    'x-forwarded-for': LIMITED_IP,
+  });
+  const limitedBody = await limited.json().catch(() => ({}));
+  check('B4b. Request vượt hạn trả HTTP 429', limited.status === 429, `status=${limited.status}`);
+  check(
+    'B4b. Có header Retry-After',
     Number(limited.headers.get('retry-after')) > 0,
     `retry-after=${limited.headers.get('retry-after')}`,
   );
   check(
-    'B4. Lời nhắn 429 là tiếng Việt tử tế',
+    'B4b. Lời nhắn 429 là tiếng Việt tử tế',
     typeof limitedBody.error === 'string' && limitedBody.error.includes('thở'),
     String(limitedBody.error).slice(0, 40),
+  );
+  check(
+    'B4b. Header nói rõ lý do chặn là per-ip',
+    limited.headers.get('x-ratelimit-reason') === 'per-ip',
+    `reason=${limited.headers.get('x-ratelimit-reason')}`,
+  );
+  check(
+    'B4b. Trường detail nói rõ cơ chế chặn (để chẩn đoán)',
+    typeof limitedBody.detail === 'string' && limitedBody.detail.includes('reason=per-ip'),
+    String(limitedBody.detail).slice(0, 60),
+  );
+  check(
+    'B4b. Header cho biết cửa sổ rate limit',
+    limited.headers.get('x-ratelimit-window') === '60',
+    `window=${limited.headers.get('x-ratelimit-window')}`,
+  );
+
+  // IP trong danh sách ưu tiên phải đi qua được, dù IP kia vừa bị chặn.
+  const bypassed = await postChat([{ role: 'user', content: 'Tớ đang tự kiểm thử.' }], {
+    'x-forwarded-for': BYPASS_IP,
+  });
+  await bypassed.text();
+  check(
+    'B4c. IP trong RATE_LIMIT_BYPASS_IPS không bị chặn',
+    bypassed.status === 200,
+    `status=${bypassed.status}`,
+  );
+  check(
+    'B4c. Header báo backend=bypass',
+    bypassed.headers.get('x-ratelimit-backend') === 'bypass',
+    `backend=${bypassed.headers.get('x-ratelimit-backend')}`,
   );
 
   // ---- B5. Thiếu API key ----
@@ -435,7 +526,7 @@ try {
     RATE_LIMIT_DISABLED: '1',
   });
 
-  const missingHealth = await (await fetch(`${APP_URL}/api/health?force=1`)).json();
+  const missingHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
   check('B5. health ok=false', missingHealth.ok === false);
   check('B5. state=missing-key', missingHealth.state === 'missing-key', String(missingHealth.state));
   check('B5. cloud vẫn báo true', missingHealth.cloud === true);
@@ -461,7 +552,7 @@ try {
     RATE_LIMIT_DISABLED: '1',
   });
 
-  const badHealth = await (await fetch(`${APP_URL}/api/health?force=1`)).json();
+  const badHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
   check('B6. state=unauthorized', badHealth.state === 'unauthorized', String(badHealth.state));
   check(
     'B6. Thông báo nói tới việc kiểm tra key',
@@ -479,6 +570,15 @@ try {
   );
 } catch (error) {
   console.error('\n💥 Smoke test lỗi:', error.message);
+  // In stack để biết lỗi đến từ dòng nào — "fetch failed" một mình không đủ
+  // thông tin để sửa (nó là thông báo chung của undici khi kết nối thất bại).
+  console.error('--- stack ---\n' + String(error.stack ?? '').split('\n').slice(0, 6).join('\n'));
+  if (app) {
+    console.error(
+      `--- app: exitCode=${app.exitCode} signalCode=${app.signalCode} ` +
+        `killed=${app.killed} reason=${app.exitReason ?? 'đang chạy'}`,
+    );
+  }
   if (app?.getLogs) console.error('--- log app (cuối) ---\n' + app.getLogs().slice(-1500));
   for (const [label, child] of [
     ['mock-ollama', ollamaMock],

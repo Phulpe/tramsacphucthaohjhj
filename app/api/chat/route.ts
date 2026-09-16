@@ -2,7 +2,7 @@ import { streamText } from 'ai';
 import { chatSettings, resolveProvider } from '@/lib/ai';
 import { getLlmStatus, type LlmStatus } from '@/lib/llm-status';
 import { SYSTEM_PROMPT } from '@/lib/system-prompt';
-import { checkRateLimit, rateLimitHeaders } from '@/lib/rate-limit';
+import { checkRateLimit, logRateLimitBlock, rateLimitHeaders } from '@/lib/rate-limit';
 import { corsHeaders, corsPreflightResponse } from '@/lib/cors';
 
 /**
@@ -165,10 +165,27 @@ export async function POST(request: Request) {
   // ---------- 1. Rate limit ----------
   const limit = await checkRateLimit(request);
   if (!limit.ok) {
+    // Ghi log để người VẬN HÀNH biết vì sao bị chặn (người dùng chỉ thấy 429).
+    // Thiếu dòng log này, mọi sự cố 429 đều trở thành một câu đố.
+    await logRateLimitBlock(request, limit);
+
+    // Hai lý do chặn rất khác nhau, nên thông điệp cũng phải khác:
+    //  - 'per-ip'      → người dùng nhắn quá nhanh, chỉ cần chờ.
+    //  - 'global-daily'→ cả trạm đã dùng hết hạn mức trong ngày, chờ cũng vô ích.
+    const isGlobal = limit.reason === 'global-daily';
+
     return errorResponse(
       {
-        error: 'Cậu nhắn nhanh quá, tớ cần một chút để "thở" 🍵',
-        hint: `Cậu chờ khoảng ${limit.resetSeconds} giây rồi nhắn tiếp nhé. Chuyện của cậu tớ vẫn nhớ mà.`,
+        error: isGlobal
+          ? 'Hôm nay trạm đã sạc hết "pin" rồi cậu ạ 🔋'
+          : 'Cậu nhắn nhanh quá, tớ cần một chút để "thở" 🍵',
+        hint: isGlobal
+          ? 'Trạm có giới hạn số lượt mỗi ngày để không đốt hết quota miễn phí. Cậu quay lại sau nhé — tớ vẫn ở đây.'
+          : `Cậu chờ khoảng ${limit.resetSeconds} giây rồi nhắn tiếp nhé. Chuyện của cậu tớ vẫn nhớ mà.`,
+        // Cho biết chính xác cơ chế nào chặn — hữu ích khi bạn tự debug bằng curl.
+        detail:
+          `rate-limit reason=${limit.reason ?? 'per-ip'} backend=${limit.backend} ` +
+          `limit=${limit.limit} window=${limit.resetSeconds}s`,
       },
       429,
       { ...cors, ...rateLimitHeaders(limit) },

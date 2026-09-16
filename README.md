@@ -6,7 +6,7 @@ Một ứng dụng web chat để **tâm sự**, không phải để hỏi đáp
 
 ```
 Chế độ LOCAL:   Người dùng ⇄ Next.js ⇄ /api/chat (tiêm System Prompt) ⇄ Ollama (qwen2.5:7b) ⇄ chính máy bạn
-Chế độ CLOUD:   Người dùng ⇄ Vercel (Next.js + /api/chat) ⇄ Groq / OpenRouter (llama-3.1-8b-instant)
+Chế độ CLOUD:   Người dùng ⇄ Vercel (Next.js + /api/chat) ⇄ Groq / OpenRouter (openai/gpt-oss-20b)
 ```
 
 ---
@@ -381,7 +381,7 @@ Mở `.env.local`, điền 3 dòng đầu (các dòng còn lại để trống c
 ```env
 LLM_PROVIDER=groq
 GROQ_API_KEY=gsk_key_that_cua_ban
-GROQ_MODEL=llama-3.1-8b-instant
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
 ```bash
@@ -392,7 +392,7 @@ npm run dev
 ```bash
 # 3) Kiểm tra "bộ não" đã kết nối chưa
 curl -s http://localhost:3000/api/health
-# → {"ok":true,"state":"ready","provider":"groq","cloud":true,"model":"llama-3.1-8b-instant", ...}
+# → {"ok":true,"state":"ready","provider":"groq","cloud":true,"model":"openai/gpt-oss-20b", ...}
 ```
 
 Trên giao diện bạn sẽ thấy nhãn ☁️ `Groq (cloud)` cạnh tiêu đề. Đó là lời nhắc minh bạch rằng nội dung tâm sự đang được gửi tới nhà cung cấp model — thay vì chỉ nằm trong máy bạn.
@@ -577,9 +577,10 @@ node tools/smoke-test.mjs
 
 4. **Provider cloud sống:** `/api/health` báo `ok=true`, `provider=groq`, `providerLabel` chứa "Groq", `cloud=true`, và **không** trả API key về client.
 5. **Stream + request thật:** `POST /api/chat` stream đúng nội dung qua SSE; request tới nhà cung cấp có system prompt ở **vị trí đầu**, `temperature=0.85`, `max_tokens=512`, `stream=true`, và system do client chèn bị **loại bỏ**.
-6. **Rate limit:** khi vượt `RATE_LIMIT_MAX` → **HTTP 429** + header `Retry-After` + lời nhắn tiếng Việt tử tế.
-7. **Thiếu API key:** `/api/health` báo `missing-key`; `/api/chat` trả 503 kèm hướng dẫn cần thêm biến môi trường nào.
-8. **API key sai:** `/api/health` báo `unauthorized`; `/api/chat` trả 503 kèm hướng dẫn tạo key mới.
+6. **Rate limit — chặn đúng và nói rõ lý do:** IP thứ nhất gửi tin đầu → 200; gửi tiếp → **429** + header `Retry-After`, `X-RateLimit-Reason: per-ip`, `X-RateLimit-Window`, và trường `detail` trong JSON nói rõ cơ chế chặn (đây là thứ giúp chẩn đoán sự cố 429 trên production).
+7. **Danh sách IP ưu tiên:** IP nằm trong `RATE_LIMIT_BYPASS_IPS` đi qua được dù hạn mức đã hết → header báo `X-RateLimit-Backend: bypass`.
+8. **Thiếu API key:** `/api/health` báo `missing-key`; `/api/chat` trả 503 kèm hướng dẫn cần thêm biến môi trường nào.
+9. **API key sai:** `/api/health` báo `unauthorized`; `/api/chat` trả 503 kèm hướng dẫn tạo key mới.
 
 Muốn xem app trước khi tải model 5 GB (dùng Ollama giả):
 
@@ -642,11 +643,14 @@ Câu trả lời **khác nhau** giữa hai chế độ. Bảng này nói rõ c�
 | Báo *"chưa có chìa khoá"* | Thiếu `GROQ_API_KEY` / `OPENROUTER_API_KEY` | Thêm vào `.env.local` (khi chạy ở máy) hoặc Vercel → Settings → Environment Variables, rồi **redeploy** |
 | Báo *"API key bị từ chối"* | Key sai, hết hạn, hoặc dán kèm dấu nháy/khoảng trắng | Tạo key mới và dán lại chính xác (không có `"` bao quanh) |
 | Lỗi *"model not found"* | Tên model sai, hoặc model đã bị nhà cung cấp ngừng cung cấp | Mở `/api/health` xem danh sách model khả dụng của key bạn, rồi sửa `GROQ_MODEL` |
-| Người dùng nhận *"nhắn nhanh quá"* | Rate limit (429) | Tăng `RATE_LIMIT_MAX` hoặc `RATE_LIMIT_WINDOW`; xem [DEPLOYMENT_GUIDE.md §5](DEPLOYMENT_GUIDE.md) |
+| Người dùng nhận *"nhắn nhanh quá"* (429) | Rate limit của app (không phải của Groq) | Xem §5.2.1 của DEPLOYMENT_GUIDE.md — có lệnh `curl` để đọc header `X-RateLimit-*` và biết ngay nguyên nhân. Cách sửa nhanh: tăng `RATE_LIMIT_MAX=60`, hoặc thêm IP của bạn vào `RATE_LIMIT_BYPASS_IPS` |
+| Bị 429 khi test mà chưa gửi nhiều lần | Có thể `RATE_LIMIT_MAX=0` còn sót, hoặc IP bị chặn chung với người khác (nhà mạng dùng CGNAT) | Kiểm tra `x-ratelimit-limit` trong header; sửa `RATE_LIMIT_MAX` rồi **redeploy** |
 | Tin nhắn đầu tiên chậm 5–15 giây | Cold start của serverless function | Bình thường; tin nhắn sau nhanh hơn |
 | Header báo `x-ratelimit-backend: memory` | Chưa cấu hình Upstash, hoặc dùng sai biến (`UPSTASH_REDIS_URL` thay vì `UPSTASH_REDIS_REST_URL`) | Bật Upstash theo hướng dẫn trong DEPLOYMENT_GUIDE.md §5.2 |
 | Lỗi *"blocked by CORS policy"* | Frontend đang gọi URL tuyệt đối sang origin khác | Dùng đường dẫn tương đối `/api/chat`; xem Phụ lục A của DEPLOYMENT_GUIDE.md |
-| Bestie trả lời tiếng Anh | Model không bám prompt | Đổi sang `llama-3.3-70b-versatile`, hoặc thêm *"Luôn trả lời bằng tiếng Việt"* vào khối `[TONE & CHAT UI BEHAVIOR]` |
+| Bestie trả lời tiếng Anh | Model không bám prompt | Đổi sang `openai/gpt-oss-120b`, hoặc thêm *"Luôn trả lời bằng tiếng Việt"* vào khối `[TONE & CHAT UI BEHAVIOR]` |
+| Lỗi `model_decommissioned` / không tìm thấy model | Model đã bị nhà cung cấp ngừng cung cấp (ví dụ `llama-3.1-8b-instant` bị Groq deprecate từ 16/08/2026) | Đổi sang model còn hiệu lực: `openai/gpt-oss-20b`. Kiểm tra `curl -s https://console.groq.com/docs/deprecations.md` |
+| Hết quota giữa ngày dù mới có vài người dùng | Trần thật là **token/ngày** (200K TPD ở free tier ≈ chỉ 50–130 lượt chat/ngày toàn hệ thống) | Xem §5.1; nâng lên Developer plan hoặc chuyển sang OpenRouter |
 | Bestie vẫn nói *"Vui lên đi"* | Model bám prompt kém | Đổi model lớn hơn; kiểm tra lại theo 4 câu thử trong DEPLOYMENT_GUIDE.md §5.4 |
 
 ### 9.2. Xóa cấu hình để quay về chế độ local

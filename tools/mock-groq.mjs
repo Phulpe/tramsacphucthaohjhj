@@ -15,7 +15,7 @@
  *
  *  Env:
  *    MOCK_PORT      cổng (mặc định 11502)
- *    MOCK_MODEL     tên model trả về ở /v1/models (mặc định llama-3.1-8b-instant)
+ *    MOCK_MODEL     tên model trả về ở /v1/models (mặc định openai/gpt-oss-20b)
  *    MOCK_REPLY     nội dung trả lời mẫu
  *    MOCK_DUMP      ghi request cuối cùng ra file (để test khẳng định nội dung)
  *    MOCK_AUTH_FAIL =1 → luôn trả 401 (giả lập key sai/hết hạn)
@@ -33,7 +33,7 @@ import http from 'node:http';
 import { writeFileSync } from 'node:fs';
 
 const PORT = Number(process.env.MOCK_PORT ?? 11502);
-const MODEL = process.env.MOCK_MODEL ?? 'llama-3.1-8b-instant';
+const MODEL = process.env.MOCK_MODEL ?? 'openai/gpt-oss-20b';
 const CHUNK_SIZE = Number(process.env.MOCK_CHUNK ?? 6);
 const CHUNK_INTERVAL = Number(process.env.MOCK_INTERVAL ?? 20);
 const AUTH_FAIL = process.env.MOCK_AUTH_FAIL === '1';
@@ -51,7 +51,7 @@ const CANNED_REPLY =
 const log = (...args) => console.log('[mock-openai]', ...args);
 
 /** Các model mà "nhà cung cấp giả" này nói là có. */
-const AVAILABLE_MODELS = [MODEL, 'llama-3.3-70b-versatile', 'qwen/qwen-2.5-7b-instruct'];
+const AVAILABLE_MODELS = [MODEL, 'openai/gpt-oss-120b', 'openai/gpt-oss-safeguard-20b'];
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', `http://${req.headers.host}`);

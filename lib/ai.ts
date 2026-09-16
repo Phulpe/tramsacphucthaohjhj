@@ -55,9 +55,26 @@ const DEFAULT_BASE_URLS: Record<Exclude<ProviderKind, 'ollama'>, string> = {
   'openai-compatible': 'https://api.openai.com/v1',
 };
 
-/** Model mặc định của từng nhà cung cấp. */
+/**
+ * Model mặc định của từng nhà cung cấp.
+ *
+ * ⚠️  ĐÂY LÀ CHỖ DỄ HỎNG NHẤT THEO THỜI GIAN. Nhà cung cấp ngừng cung cấp model
+ *     khá nhanh, và một model đã bị deprecate sẽ lỗi ngay ở tin nhắn đầu tiên với
+ *     thông báo rất khó đoán (model_decommissioned / model not found).
+ *
+ *     Trước khi đổi hoặc nâng cấp: kiểm tra trang deprecations của nhà cung cấp.
+ *     Mẹo: thêm `.md` vào URL tài liệu để lấy bản markdown sạch, dễ đọc bằng mắt
+ *     hoặc parse:
+ *       curl -s https://console.groq.com/docs/deprecations.md
+ *       curl -s https://console.groq.com/docs/models.md
+ *
+ *     Ghi nhận ngày 16/09/2026: Groq đã deprecate `llama-3.1-8b-instant` và
+ *     `llama-3.3-70b-versatile` cho free + developer tier (từ 16/08/2026), chuyển
+ *     người dùng sang dòng `openai/gpt-oss-*`. Vì vậy mặc định ở đây là
+ *     `openai/gpt-oss-20b` — model Production, có trên free tier.
+ */
 const DEFAULT_MODELS: Record<Exclude<ProviderKind, 'ollama'>, string> = {
-  groq: 'llama-3.1-8b-instant',
+  groq: 'openai/gpt-oss-20b',
   openrouter: 'qwen/qwen-2.5-7b-instruct',
   'openai-compatible': 'gpt-4o-mini',
 };

@@ -44,7 +44,7 @@ flowchart LR
     APP -->|"fetch('/api/chat')<br/>cùng origin"| API["🛡️ /api/chat<br/>Serverless Function"]
     API -->|"1. rate limit"| RL["⏱️ Upstash Redis<br/>(tuỳ chọn)"]
     API -->|"2. chèn System Prompt"| API
-    API -->|"3. POST chuẩn OpenAI<br/>+ Bearer GROQ_API_KEY"| LLM["🧠 Groq / OpenRouter<br/>(model llama-3.1-8b-instant)"]
+    API -->|"3. POST chuẩn OpenAI<br/>+ Bearer GROQ_API_KEY"| LLM["🧠 Groq / OpenRouter<br/>(openai/gpt-oss-20b)"]
     LLM -.->|"SSE streaming"| API
     API -.->|"data-stream"| APP
     API -->|"4. không lưu gì"| X["🚫"]
@@ -63,7 +63,7 @@ flowchart LR
 | Thành phần | Vai trò | Miễn phí? |
 | --- | --- | --- |
 | **Vercel** | Chạy Next.js, tự động HTTPS, CDN toàn cầu, build từ GitHub mỗi lần push | ✅ Gói **Hobby** |
-| **Groq** | Chạy model (`llama-3.1-8b-instant`) với tốc độ rất cao nhờ chip LPU | ✅ Free tier (có giới hạn) |
+| **Groq** | Chạy model (`openai/gpt-oss-20b`) với tốc độ rất cao nhờ chip LPU | ✅ Free tier (có giới hạn — xem §5.1) |
 | **OpenRouter** | Định tuyến tới nhiều model khác nhau, có nhóm model `:free` | ✅ Free tier (có giới hạn) |
 | **GitHub** | Nơi chứa mã nguồn; mỗi lần push, Vercel tự deploy lại | ✅ |
 | **Upstash Redis** | Bộ đếm rate limit dùng chung giữa các instance serverless | ✅ Free tier |
@@ -111,13 +111,30 @@ curl https://api.groq.com/openai/v1/models \
 
 Nếu thấy JSON có `"object":"list"` và danh sách model → key đã sẵn sàng.
 
-**Model nên dùng cho Bestie:**
+**Model nên dùng cho Bestie (kiểm tra lại ngày 16/09/2026):**
 
 | Model | Vì sao chọn | Ghi chú |
 | --- | --- | --- |
-| `llama-3.1-8b-instant` ⭐ | Nhanh nhất, quota free tier hào phóng nhất, đủ tốt cho nhắn tin ngắn | Mặc định của dự án |
-| `llama-3.3-70b-versatile` | Thấu cảm và tiếng Việt tốt hơn rõ rệt | Tốn quota nhanh hơn ~5–10 lần |
-| `openai/gpt-oss-20b` | Model mở của OpenAI chạy trên hạ tầng Groq | Cân bằng giữa hai lựa chọn trên |
+| `openai/gpt-oss-20b` ⭐ | Model **Production**, có trên free tier, ~1000 tps | **Mặc định của dự án.** Cũng là model Groq chính thức khuyến nghị |
+| `openai/gpt-oss-120b` | Thông minh hơn, cùng mức hạn mức free tier | Chọn khi Bestie bám prompt chưa tốt |
+| `qwen/qwen3.8-27b` | Đa ngữ/tiếng Việt mạnh hơn | Nhóm **Preview** — có thể bị ngừng bất ngờ, không nên dùng cho production |
+| `groq/compound` | Hệ thống có sẵn công cụ tìm kiếm web | Không cần cho việc tâm sự; tốn quota hơn |
+
+> ⚠️ **CẢNH BÁO DEPRECATION — đọc trước khi copy cấu hình từ bất kỳ hướng dẫn cũ nào:**
+>
+> Groq đã **ngừng cung cấp cho free + developer tier** hai model sau, hiệu lực từ **16/08/2026** (khách hàng enterprise có hợp đồng committed-spend không bị ảnh hưởng):
+>
+> - `llama-3.1-8b-instant` → thay bằng **`openai/gpt-oss-20b`**
+> - `llama-3.3-70b-versatile` → thay bằng `openai/gpt-oss-120b` hoặc `qwen/qwen3.6-27b`
+>
+> Model card của chúng giờ ghi nhãn **Enterprise**, giá và hạn mức đều là "Contact Sales". Nếu bạn đặt `GROQ_MODEL=llama-3.1-8b-instant`, tin nhắn đầu tiên sẽ lỗi `model_decommissioned` / không tìm thấy model.
+>
+> **Thói quen nên giữ:** kiểm tra trang deprecations trước mỗi lần đổi model. Mẹo đọc nhanh — thêm `.md` vào URL tài liệu để lấy bản markdown sạch (dễ đọc hơn nhiều so với trang HTML, vốn render một phần ở phía client):
+>
+> ```bash
+> curl -s https://console.groq.com/docs/deprecations.md | head -80
+> curl -s https://console.groq.com/docs/models.md
+> ```
 
 ### 2.2. OpenRouter (nhiều model, có model miễn phí)
 
@@ -126,12 +143,20 @@ Nếu thấy JSON có `"object":"list"` và danh sách model → key đã sẵn 
 3. Sao chép key (dạng `sk-or-v1-...`) và lưu lại.
 4. Tuỳ chọn nhưng nên làm: vào **Settings → Preferences**, điền tên app. Vài dòng model miễn phí yêu cầu tài khoản có credit tối thiểu hoặc đã xác minh — nếu bị từ chối, xem thông báo lỗi cụ thể.
 
-**Model miễn phí để thử:** gõ tìm trong trang Models và lọc theo `Free`. Các tên thường dùng:
+**Model miễn phí để thử:** danh sách `:free` **thay đổi liên tục**, nên đừng tin bất kỳ danh sách nào viết sẵn (kể cả tài liệu này) — hãy lấy danh sách **sống**. API models của OpenRouter công khai, **không cần key**:
 
-- `qwen/qwen-2.5-7b-instruct`
-- `meta-llama/llama-3.1-8b-instruct`
-- `google/gemma-2-9b-it:free` ← đuôi `:free` là biến thể miễn phí
-- `deepseek/deepseek-chat-v3.1:free`
+```bash
+curl -s https://openrouter.ai/api/v1/models | python3 -c \
+  "import json,sys
+   for m in sorted(json.load(sys.stdin)['data'], key=lambda x: x['id']):
+       p = m['pricing']
+       if p['prompt'] == '0' and p['completion'] == '0':
+           print(f\"{m['id']:50s} ctx={m['context_length']}\")"
+```
+
+Ngày **16/09/2026** có **24 model miễn phí**, ví dụ: `google/gemma-4-31b-it:free`, `google/gemma-4-26b-a4b-it:free`, `z-ai/glm-5.2:free`, `nvidia/nemotron-3.5-lightning:free`, `thinkingmachines/inkling:free`, và `openrouter/free` (router tự chọn model miễn phí còn chỗ).
+
+Các id hay gặp trong hướng dẫn cũ **đã không còn tồn tại**: `google/gemma-2-9b-it:free`, `deepseek/deepseek-chat-v3.1:free`, `qwen/qwen-2.5-7b-instruct:free`. Model mặc định của dự án `qwen/qwen-2.5-7b-instruct` (không có `:free`) **vẫn hoạt động**, context 32K, giá ~$0.10/$0.20 per 1M token.
 
 > 💡 **Mẹo chọn model cho ứng dụng này:** tiêu chí không phải "model thông minh nhất" mà là **model biết nghe lời**. Bestie sống nhờ System Prompt; một model bám prompt tốt (nhất là các khối `[ETHICAL BOUNDARY]` và `[CORE DIRECTIVES]`) sẽ cho trải nghiệm tốt hơn một model to xác nhưng tự ý "cải biên" lời khuyên. Sau khi deploy, hãy thử hỏi mấy câu nhạy cảm (xem §5.4) để kiểm tra model có tôn trọng hàng rào đạo đức không.
 
@@ -216,7 +241,7 @@ Vẫn ở trang cấu hình (hoặc sau này: **Project → Settings → Environ
 | --- | --- | --- |
 | `LLM_PROVIDER` | `groq` | Production, Preview, Development |
 | `GROQ_API_KEY` | `gsk_...` (key thật của bạn) | Production, Preview, Development |
-| `GROQ_MODEL` | `llama-3.1-8b-instant` | Production, Preview, Development |
+| `GROQ_MODEL` | `openai/gpt-oss-20b` | Production, Preview, Development |
 
 **Nên thêm (bảo vệ quota):**
 
@@ -259,8 +284,8 @@ Trong JSON trả về, tìm 3 field:
   "provider": "groq",
   "providerLabel": "Groq (cloud)",
   "cloud": true,
-  "model": "llama-3.1-8b-instant",
-  "message": "Groq (cloud) đã sẵn sàng với model llama-3.1-8b-instant."
+  "model": "openai/gpt-oss-20b",
+  "message": "Groq (cloud) đã sẵn sàng với model openai/gpt-oss-20b."
 }
 ```
 
@@ -424,11 +449,51 @@ Nếu bạn có bật `ALLOWED_ORIGINS` (chỉ khi gọi API từ site khác —
 - Groq: **https://console.groq.com/settings/limits**
 - OpenRouter: **https://openrouter.ai/settings/limits** (và trang xem usage)
 
-**Các giới hạn thường gặp (tham khảo, cần tự kiểm tra):**
+**Số liệu thật từ tài liệu Groq** — lấy ngày **16/09/2026**. Cách tự lấy lại (bản markdown sạch, không cần parse HTML):
+
+```bash
+curl -s https://console.groq.com/docs/rate-limits.md | sed -n '/MODEL ID/,/^$/p'
+```
+
+| Model | RPM | RPD | TPM | TPD |
+| --- | --- | --- | --- | --- |
+| `openai/gpt-oss-20b` ⭐ (mặc định) | 30 | 1.000 | 8K | 200K |
+| `openai/gpt-oss-120b` | 30 | 1.000 | 8K | 200K |
+| `openai/gpt-oss-safeguard-20b` | 30 | 1.000 | 8K | 200K |
+| `qwen/qwen3.8-27b` | 30 | 1.000 | 8K | 200K |
+| `groq/compound` · `groq/compound-mini` | 30 | 250 | 70K | – |
+| `meta-llama/llama-prompt-guard-2-22m` · `-86m` | 30 | 14,4K | 15K | 500K |
+| `whisper-large-v3` · `whisper-large-v3-turbo` | 20 | 2.000 | – | – (ASH 7,2K / ASD 28,8K) |
+| `canopylabs/orpheus-*` (TTS) | 10 | 100 | 1,2K | 3,6K |
+
+**Developer plan** (trả theo dùng) cho nhóm `gpt-oss` và `qwen3.8`: **1.000 RPM, 250K TPM** — cao hơn free khoảng **33 lần về RPM** và **31 lần về TPM**. Giá `openai/gpt-oss-20b`: $0.075 input / $0.30 output cho mỗi 1M token (input đã cache: $0.037). Các model Llama 3.1 8B / 3.3 70B: "Contact Sales" (Enterprise).
+
+> ⚠️ **Tài liệu Groq tự mâu thuẫn ở đây, tôi nói thẳng để bạn không bị lệch kế hoạch:** bảng trên nằm dưới tab **"Free Plan Limits"** (tab đang được chọn khi tải trang), nhưng đoạn văn ngay phía trên lại khẳng định các số đó là *"base limits for the Developer plan"*. Con số **chính xác cho tổ chức của bạn** chỉ có ở **https://console.groq.com/settings/limits**. Hãy dùng bảng trên để lập kế hoạch, và luôn xác nhận lại bằng trang đó trước khi công bố URL.
+
+**Điều quan trọng nhất khi lập kế hoạch: trần thật là token/ngày (TPD), KHÔNG phải số request.**
+
+Với `openai/gpt-oss-20b` free tier, bạn có 1.000 request/ngày nhưng chỉ **200K token/ngày**. Tính cho Bestie:
+
+| Thành phần mỗi lượt chat | Token ước tính |
+| --- | --- |
+| System Prompt (tiếng Việt, ~1 KB) | ~800 |
+| Lịch sử hội thoại (tối đa 24 tin nhắn) | 300 → ~3.000 (tăng dần theo độ dài cuộc trò chuyện) |
+| Câu trả lời (giới hạn `LLM_MAX_TOKENS=512`) | ≤ 512 |
+| **Tổng mỗi lượt** | **~1,5K → ~4K** |
+
+⇒ 200K TPD ÷ 2–4K ≈ **50–130 lượt chat mỗi ngày cho TOÀN BỘ người dùng**. Chỉ vài người dùng thật là hết quota. Ngược lại, 1.000 RPD gần như **không bao giờ** chạm tới — đừng lập kế hoạch dựa trên con số "1.000 request/ngày".
+
+**Bốn quy tắc của Groq mà code retry/limit cần biết:**
+
+1. Giới hạn áp ở cấp **tổ chức**, không phải từng người dùng — mọi người dùng app dùng chung quota.
+2. Chạm **bất kỳ** loại nào trước thì bị chặn (hết RPM dù TPM còn rất nhiều vẫn bị 429).
+3. **Token đã cache không tính** vào hạn mức (nhờ prompt caching) — với Bestie, System Prompt lặp lại mỗi lượt nên đây là phần được miễn hợp lý.
+4. Header trả về: `x-ratelimit-limit-requests` = **RPD**, nhưng `x-ratelimit-limit-tokens` = **TPM**. Hai đơn vị khác nhau — đọc kỹ trước khi viết logic retry, và `retry-after` chỉ xuất hiện khi bị 429.
+
+**Các dịch vụ còn lại:**
 
 | Dịch vụ | Giới hạn điển hình | Rủi ro thực tế |
 | --- | --- | --- |
-| Groq (free) | Giới hạn theo **số request/phút**, **token/phút** và **request/ngày** cho từng model; model nhỏ được nhiều hơn model lớn | 2–3 người dùng tích cực là đủ chạm trần token/phút |
 | OpenRouter (`:free`) | Giới hạn **request/phút** và **request/ngày**; một số model miễn phí cần tài khoản có credit | Trần theo ngày hết nhanh; model miễn phí có thể bị tạm ngừng |
 | Vercel Hobby | Giới hạn **băng thông**, **thời gian chạy hàm**, **số lần gọi hàm** mỗi tháng | Vượt hạn mức → project bị tạm dừng (không phát sinh hoá đơn) |
 | Upstash (free) | Giới hạn **số lệnh/ngày** và dung lượng | Mỗi tin nhắn dùng 2 lệnh → hàng nghìn tin nhắn/ngày vẫn ổn |
@@ -485,9 +550,74 @@ x-ratelimit-backend: memory      ← 'upstash' là chính xác, 'memory' là bes
 | Mục tiêu | `RATE_LIMIT_MAX` | `RATE_LIMIT_WINDOW` |
 | --- | --- | --- |
 | Bản demo cho vài người bạn | `10` | `60` |
-| Công khai vừa phải (khuyến nghị) | `20` | `60` |
+| Công khai vừa phải — **cân bằng, khuyến nghị** | `60` | `60` |
 | Chỉ dùng một mình | `60` | `60` |
 | **Khoá tạm toàn bộ (xem §5.6)** | `0` | `60` |
+
+> ⚠️ **Vì sao tôi đổi khuyến nghị từ 20 lên 60:** ở Việt Nam, nhà mạng dùng **CGNAT** rất phổ biến — hàng chục đến hàng trăm người thật có thể dùng **chung một IP công cộng**. Với `20`, chỉ cần một người trong khu nhà bạn nhắn nhiều là cả xóm bị chặn, mà không ai hiểu vì sao. `60/phút cho mỗi IP` vẫn chặn tốt bot (bot thô gọi hàng nghìn lần/phút) mà hầu như không chặn nhầm người thật. Đây là đánh đổi có chủ đích.
+
+#### 5.2.1. Gặp lỗi 429 trên Vercel — cách chẩn đoán trong 1 phút
+
+Đây là sự cố phổ biến nhất sau khi deploy, nên có hẳn một mục. **Trước tiên phải phân biệt 429 của AI là do app hay do Groq**, vì cách xử lý hoàn toàn khác nhau:
+
+Mở **Vercel → Project → Logs**, tìm request bị 429 và xem mục **External APIs**:
+
+| Dấu hiệu trong log | Kết luận |
+| --- | --- |
+| `External APIs: No outgoing requests` + thời gian chạy rất ngắn (~200–400ms) | **429 của CHÍNH APP** (lớp `lib/rate-limit.ts`) — request bị chặn trước khi gọi Groq |
+| Có request ra ngoài tới `api.groq.com`, thời gian chạy dài hơn | **429 của GROQ** — đã vượt RPM/TPM/TPD. Xem §5.1 và bảng hạn mức |
+
+Nếu là 429 của app, chạy lệnh này từ máy bạn để thấy chính xác con số:
+
+```bash
+curl -s -D - -o /tmp/rl.json -X POST https://ten-mien-cua-ban/api/chat \
+  -H "content-type: application/json" \
+  -d '{"messages":[{"role":"user","content":"test"}]}' \
+  | grep -i 'x-ratelimit\|retry-after'; cat /tmp/rl.json
+```
+
+Kết quả sẽ cho bạn biết ngay vấn đề nằm ở đâu:
+
+```text
+x-ratelimit-limit: 20            ← hạn mức đang có hiệu lực (đọc từ RATE_LIMIT_MAX)
+x-ratelimit-remaining: 0         ← đã dùng hết
+x-ratelimit-reset: 43            ← còn 43 giây nữa mới được nhắn tiếp
+x-ratelimit-backend: memory      ← 'memory' = chưa có Upstash; 'upstash' = đã cấu hình
+x-ratelimit-window: 60           ← độ dài cửa sổ (giây)
+x-ratelimit-reason: per-ip       ← cơ chế nào chặn: 'per-ip' hoặc 'global-daily'
+retry-after: 43
+```
+
+```json
+{
+  "error": "Cậu nhắn nhanh quá, tớ cần một chút để \"thở\" 🍵",
+  "hint": "Cậu chờ khoảng 43 giây rồi nhắn tiếp nhé...",
+  "detail": "rate-limit reason=per-ip backend=memory limit=20 window=43s"
+}
+```
+
+Trường `detail` và header `x-ratelimit-reason` là hai thứ được thêm vào **đúng vì sự cố này**: trước đây app trả 429 trống trơn, không log, không lý do — khiến việc chẩn đoán phải đoán mò.
+
+Giờ trong **Vercel → Logs** cũng có dòng cảnh báo cho mỗi lần chặn (IP được băm, không lưu IP thô, không chứa nội dung tâm sự):
+
+```text
+[rate-limit] CHẶN request · reason=per-ip backend=memory limit=20 window=60s ip_fp=3f9a1c07 uri=/api/chat
+```
+
+`ip_fp` giống nhau lặp lại nhiều lần = **cùng một người** đang gọi liên tục (đúng như mong đợi). Nếu `ip_fp` khác nhau mà vẫn bị chặn nhiều = bạn đang đặt hạn mức quá thấp cho lưu lượng thật.
+
+**Cách xử lý theo từng nguyên nhân:**
+
+| Nguyên nhân | Cách sửa |
+| --- | --- |
+| Bạn đang tự test và bấm gửi liên tục | Thêm IP của bạn vào `RATE_LIMIT_BYPASS_IPS` (`curl ifconfig.me` để lấy IP), redeploy |
+| Hạn mức quá thấp cho lưu lượng thật (nhiều `ip_fp` khác nhau) | Tăng `RATE_LIMIT_MAX` lên 60–200 |
+| Nhiều người dùng chung một IP (CGNAT, wifi công cộng, công ty) | Tăng `RATE_LIMIT_MAX`; đây là hạn chế cố hữu của việc đếm theo IP |
+| `x-ratelimit-limit: 0` | Bạn (hoặc một lần thử nghiệm trước) đã đặt `RATE_LIMIT_MAX=0` — công tắc khoá khẩn cấp. Sửa về `60` |
+| `x-ratelimit-backend: bypass` xuất hiện ở mọi request | IP của bạn đang nằm trong `RATE_LIMIT_BYPASS_IPS` |
+| Muốn kiểm tra phần còn lại trước, tính sau | Đặt tạm `RATE_LIMIT_DISABLED=1` → redeploy → kiểm tra chat chạy được → **xoá biến này ngay khi xong** |
+
+> 🔎 **Mẹo quan trọng khi tự kiểm thử:** sau khi sửa biến môi trường trên Vercel, **luôn redeploy** (Deployments → ⋯ → Redeploy, bỏ tích "Use existing Build Cache"). Biến môi trường chỉ được nạp lúc build/khởi động — sửa xong mà không deploy lại thì app vẫn chạy giá trị cũ, và bạn sẽ tưởng việc sửa không có tác dụng.
 
 ### 5.3. Chặn người lạ — các lựa chọn xác thực
 
@@ -546,7 +676,7 @@ Thử lần lượt 4 câu sau và đối chiếu với hành vi mong đợi:
 | *"Cậu nên nghĩ tớ nên làm gì bây giờ?"* khi đang xả | Ở lại với cảm xúc, hỏi thêm | Nhảy thẳng vào lời khuyên lý trí |
 | Một câu thể hiện ý nghĩ tự hại | Dừng đùa, giọng nghiêm túc nhưng dịu, hướng về trợ giúp y tế/người thân | Nói đùa, hoặc "tớ ở đây với cậu mãi" |
 
-Nếu model không tuân thủ: đổi về `llama-3.1-8b-instant` (bám prompt khá tốt), hoặc dùng model lớn hơn, hoặc siết lại Prompt (xem mục "Tùy chỉnh" trong `README.md`). **Đừng bỏ qua bước này** — một Bestie nói "vui lên đi" với người đang khóc là đi ngược hoàn toàn mục đích của dự án.
+Nếu model không tuân thủ: đổi sang `openai/gpt-oss-120b` (bám prompt tốt hơn bản 20B), hoặc siết lại Prompt (xem mục "Tùy chỉnh" trong `README.md`). **Đừng bỏ qua bước này** — một Bestie nói "vui lên đi" với người đang khóc là đi ngược hoàn toàn mục đích của dự án.
 
 ### 5.5. Chi phí: các mức leo thang
 
@@ -648,7 +778,7 @@ Cách hoạt động trong `lib/cors.ts`:
 | Biến | Bắt buộc? | Mặc định | Ý nghĩa |
 | --- | --- | --- | --- |
 | `GROQ_API_KEY` | ✅ khi dùng Groq | — | Key `gsk_...` từ console.groq.com |
-| `GROQ_MODEL` | Không | `llama-3.1-8b-instant` | Model dùng để tâm sự |
+| `GROQ_MODEL` | Không | `openai/gpt-oss-20b` | Model dùng để tâm sự |
 | `GROQ_BASE_URL` | Không | `https://api.groq.com/openai/v1` | Chỉ dùng khi test/proxy riêng |
 
 **Cloud — OpenRouter**
@@ -691,10 +821,12 @@ Cách hoạt động trong `lib/cors.ts`:
 
 | Biến | Bắt buộc? | Mặc định | Ý nghĩa |
 | --- | --- | --- | --- |
-| `RATE_LIMIT_MAX` | ✅ nên đặt | `20` | Số request/IP/cửa sổ (`0` = khoá toàn bộ) |
+| `RATE_LIMIT_MAX` | ✅ nên đặt | `20` | Số request/IP/cửa sổ (`0` = khoá toàn bộ). Khuyến nghị khi public: `60` |
 | `RATE_LIMIT_WINDOW` | Không | `60` | Độ dài cửa sổ (giây) |
 | `RATE_LIMIT_DISABLED` | Không | — | `1` = tắt rate limit (chỉ dùng khi dev) |
-| `UPSTASH_REDIS_REST_URL` | Không | — | Bật rate limit chính xác |
+| `RATE_LIMIT_BYPASS_IPS` | Không | — | Danh sách IP được bỏ qua, phân tách bằng dấu phẩy (để tự test) |
+| `GLOBAL_DAILY_MAX` | Không | `0` (tắt) | Hạn mức **số lượt chat mỗi ngày cho cả app** — lớp bảo vệ quota thật. Cần Upstash |
+| `UPSTASH_REDIS_REST_URL` | Không | — | Bật rate limit chính xác + cho `GLOBAL_DAILY_MAX` hoạt động |
 | `UPSTASH_REDIS_REST_TOKEN` | Không | — | Token đi kèm |
 
 **CORS**
@@ -714,7 +846,7 @@ Cách hoạt động trong `lib/cors.ts`:
 | Lỗi *"model not found"* / *"model_decommissioned"* | Tên model sai hoặc model đã bị nhà cung cấp ngừng cung cấp | Mở `/api/health` xem danh sách model khả dụng, chọn tên còn hiệu lực |
 | Trả lời chậm 5–15 giây ở tin nhắn đầu | Cold start của serverless function | Bình thường. Tin nhắn sau nhanh hơn. Có thể giữ hàm "ấm" bằng cron ping `/api/health` |
 | Câu trả lời bị cụt giữa chừng | Chạm `LLM_MAX_TOKENS` | Tăng `LLM_MAX_TOKENS=1024` (tăng chi phí/quota đôi chút) |
-| Bestie trả lời bằng tiếng Anh | Model không bám prompt | Dùng `llama-3.3-70b-versatile`, hoặc thêm câu *"Luôn trả lời bằng tiếng Việt"* vào đầu `[TONE & CHAT UI BEHAVIOR]` |
+| Bestie trả lời bằng tiếng Anh | Model không bám prompt | Dùng `openai/gpt-oss-120b`, hoặc thêm câu *"Luôn trả lời bằng tiếng Việt"* vào đầu `[TONE & CHAT UI BEHAVIOR]` |
 | Bestie nói *"Vui lên đi"* | Model nhỏ bám prompt kém | Đổi model lớn hơn; xem lại §5.4 |
 | Người dùng thứ N nhận *"nhắn nhanh quá"* dù mới nhắn lần đầu | Rate limit đếm theo IP; nhiều người dùng chung wifi/NAT ⇒ chung một IP | Tăng `RATE_LIMIT_MAX` hoặc cửa sổ; hoặc chấp nhận (an toàn hơn là mở toang) |
 | Header báo `x-ratelimit-backend: memory` dù đã thêm Upstash | Sai biến (dùng `UPSTASH_REDIS_URL` thay vì `..._REST_URL`) hoặc chưa redeploy | Kiểm tra lại tên biến trong Vercel, redeploy |
