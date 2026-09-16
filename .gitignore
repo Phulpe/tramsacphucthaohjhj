@@ -1,0 +1,25 @@
+# Bản build
+.next/
+out/
+build/
+dist/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Biến môi trường (có thể chứa cấu hình riêng tư)
+.env
+.env.local
+.env*.local
+
+# Log & file rác
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+.vercel
+next-env.d.ts
+tsconfig.tsbuildinfo
+*.tsbuildinfo

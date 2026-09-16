@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   THEME "HEALING WARM DARK"
+   --------------------------------------------------------------------------
+   Toàn bộ màu nằm ở đây (dạng HSL, không có dấu phẩy để Tailwind đọc được).
+   Bạn có thể đổi cả bảng màu chỉ bằng cách sửa các biến dưới đây.
+   ========================================================================== */
+@layer base {
+  :root {
+    /* Nền: #121212 và các sắc độ đậm dần của "bóng tối ấm" */
+    --ink-900: 0 0% 7%;      /* #121212 — nền chính */
+    --ink-800: 0 0% 10%;     /* #1A1A1A — nền khối chat */
+    --ink-700: 0 0% 12%;     /* #1F1F1F — bubble của Bestie */
+    --ink-600: 0 0% 15%;     /* #262626 — viền / hover */
+
+    /* Chữ: #E0E0E0 (không dùng trắng tinh để đỡ chói mắt ban đêm) */
+    --mist: 0 0% 88%;
+    --mist-soft: 0 0% 72%;
+    --mist-dim: 0 0% 54%;
+
+    /* Accent 1: Sage xanh #8FBC8F — màu của "được lắng nghe" */
+    --sage: 120 25% 65%;
+    --sage-soft: 120 25% 78%;
+    --sage-deep: 120 20% 45%;
+
+    /* Accent 2: Vàng ấm #F4A261 — màu của "ánh đèn nhỏ trong phòng" */
+    --amber: 27 87% 67%;
+    --amber-soft: 27 87% 80%;
+
+    --border: 0 0% 22%;
+    --ring: 120 25% 65%;
+
+    /* Bo góc lớn, mềm — "không có góc nhọn nào trong căn phòng này" */
+    --radius: 1rem;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: hsl(var(--ink-900));
+    color: hsl(var(--mist));
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Vùng chọn văn bản mang màu sage thay vì xanh dương mặc định */
+  ::selection {
+    background-color: hsl(var(--sage) / 0.28);
+    color: hsl(var(--mist));
+  }
+
+  /* Focus ring dịu, không giật mình */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.6);
+    outline-offset: 2px;
+  }
+}
+
+/* ==========================================================================
+   THÀNH PHẦN DÙNG CHUNG
+   ========================================================================== */
+@layer components {
+  /* Thanh cuộn mảnh, chìm vào nền — không ai muốn thấy "thiết bị" khi đang tâm sự */
+  .scrollbar-healing {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--ink-600)) transparent;
+  }
+  .scrollbar-healing::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-healing::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-healing::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--ink-600));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scrollbar-healing::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--sage) / 0.4);
+    background-clip: content-box;
+  }
+
+  /* Nền "thở": 2 vệt sáng sage/amber rất mờ, nhịp 7 giây
+     → tạo cảm giác căn phòng còn sống, có người đang đợi. */
+  .ambient-room::before,
+  .ambient-room::after {
+    content: '';
+    position: fixed;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: 9999px;
+    filter: blur(80px);
+    animation: breathe 7s ease-in-out infinite;
+  }
+  .ambient-room::before {
+    width: 42vw;
+    height: 42vw;
+    top: -12vw;
+    left: -10vw;
+    background: radial-gradient(circle, hsl(var(--sage) / 0.16), transparent 70%);
+  }
+  .ambient-room::after {
+    width: 36vw;
+    height: 36vw;
+    bottom: -14vw;
+    right: -8vw;
+    background: radial-gradient(circle, hsl(var(--amber) / 0.14), transparent 70%);
+    animation-delay: -3.5s;
+  }
+
+  /* Bubble của Bestie có viền sáng nhẹ để "nổi" khỏi nền */
+  .bubble-bestie {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--ink-700)) 0%,
+      hsl(var(--ink-800)) 100%
+    );
+    border: 1px solid hsl(var(--border) / 0.7);
+    box-shadow: var(--tw-shadow, 0 4px 24px -8px rgba(0, 0, 0, 0.55));
+  }
+
+  /* Bubble của người dùng: sage chìm, chữ sáng — như tin nhắn mình gửi đi */
+  .bubble-me {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--sage-deep) / 0.32) 0%,
+      hsl(var(--sage-deep) / 0.2) 100%
+    );
+    border: 1px solid hsl(var(--sage) / 0.22);
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.6;
+      transform: scale(1.06);
+    }
+  }
+}
+
+/* ==========================================================================
+   TÔN TRỌNG NGƯỜI DÙNG
+   Với người đang lo âu hoặc nhạy cảm với chuyển động, animation "thở" và
+   hiệu ứng trượt có thể gây khó chịu. Tắt hết khi họ yêu cầu ở OS.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
