@@ -57,6 +57,11 @@ const CLOUD_KEY = 'gsk_test_key_12345';
 /** Các IP giả để kiểm tra rate limit tách biệt giữa các "người dùng". */
 const LIMITED_IP = '203.0.113.10';
 const BYPASS_IP = '198.51.100.7';
+<<<<<<< HEAD
+=======
+/** API key dùng để kiểm tra đường bỏ qua rate limit khi tích hợp hệ thống. */
+const API_KEY = 'api_key_test_9876543210';
+>>>>>>> 937fbcc (lastt)
 /** Cổng không tồn tại — dùng để giả lập "provider không kết nối được". */
 const DEAD_URL = 'http://127.0.0.1:9';
 
@@ -310,7 +315,11 @@ try {
     LLM_PROVIDER: 'ollama',
     OLLAMA_BASE_URL: `http://127.0.0.1:${OLLAMA_MOCK_PORT}/api`,
     OLLAMA_MODEL,
+<<<<<<< HEAD
     RATE_LIMIT_DISABLED: '1', // kịch bản A không kiểm tra rate limit
+=======
+    // KHÔNG đặt biến RATE_LIMIT_* nào — kịch bản A kiểm tra đúng hành vi mặc định.
+>>>>>>> 937fbcc (lastt)
   });
   check('Next server đã lên', true, APP_URL);
 
@@ -362,6 +371,36 @@ try {
   check('A4. keep_alive được tiêm', localDump.keep_alive === '30m', String(localDump.keep_alive));
   check('A4. num_ctx = 8192', localDump.options?.num_ctx === 8192, String(localDump.options?.num_ctx));
 
+<<<<<<< HEAD
+=======
+  // ---- A6. Rate limit PHẢI tắt mặc định ----
+  // Đây là bài kiểm tra hồi quy cho sự cố production thật: app từng trả 429 cho
+  // MỌI request vì một biến môi trường được khai báo nhưng để trống/đặt =0.
+  const defaultHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
+  check(
+    'A6. health báo rate limit đang TẮT',
+    defaultHealth.rateLimit?.enabled === false,
+    `enabled=${defaultHealth.rateLimit?.enabled}`,
+  );
+  check(
+    'A6. /api/chat có header cho biết rate limit tắt',
+    (await postChat([{ role: 'user', content: 'kiểm tra mặc định' }])).headers.get(
+      'x-ratelimit-enabled',
+    ) === '0',
+  );
+
+  let defaultAllOk = true;
+  for (let i = 0; i < 5; i += 1) {
+    const r = await postChat([{ role: 'user', content: `tin số ${i}` }]);
+    await r.text();
+    if (r.status !== 200) {
+      defaultAllOk = false;
+      break;
+    }
+  }
+  check('A6. 5 request liên tiếp đều 200 khi rate limit tắt', defaultAllOk);
+
+>>>>>>> 937fbcc (lastt)
   await stopApp(app);
   app = await startApp({
     LLM_PROVIDER: 'ollama',
@@ -392,10 +431,20 @@ try {
     GROQ_MODEL: CLOUD_MODEL,
     GROQ_BASE_URL: `http://127.0.0.1:${CLOUD_MOCK_PORT}/v1`,
     // Cố tình đặt thấp để kiểm tra được nhánh 429 chỉ với vài request.
+<<<<<<< HEAD
+=======
+    // ⚠️  Phải bật tường minh bằng RATE_LIMIT_ENABLED — mặc định là TẮT.
+    RATE_LIMIT_ENABLED: '1',
+>>>>>>> 937fbcc (lastt)
     RATE_LIMIT_MAX: '1',
     RATE_LIMIT_WINDOW: '60',
     // IP này phải được bỏ qua hoàn toàn — dùng cho chính người vận hành test.
     RATE_LIMIT_BYPASS_IPS: BYPASS_IP,
+<<<<<<< HEAD
+=======
+    // Đường bỏ qua thứ hai, dành cho tích hợp hệ thống (header x-api-key).
+    RATE_LIMIT_API_KEY: API_KEY,
+>>>>>>> 937fbcc (lastt)
   });
 
   // Trước khi kiểm tra, chắc chắn server giả còn sống — nếu nó đã chết thì báo
@@ -515,6 +564,41 @@ try {
     `backend=${bypassed.headers.get('x-ratelimit-backend')}`,
   );
 
+<<<<<<< HEAD
+=======
+  // Đường bỏ qua thứ hai: x-api-key khớp RATE_LIMIT_API_KEY (dùng cho tích hợp).
+  const keyed = await postChat([{ role: 'user', content: 'Tớ gọi từ hệ thống khác.' }], {
+    'x-api-key': API_KEY,
+  });
+  await keyed.text();
+  check(
+    'B4d. Request có x-api-key đúng được bỏ qua rate limit',
+    keyed.status === 200,
+    `status=${keyed.status}`,
+  );
+  check(
+    'B4d. Header báo backend=bypass cho request dùng API key',
+    keyed.headers.get('x-ratelimit-backend') === 'bypass',
+    `backend=${keyed.headers.get('x-ratelimit-backend')}`,
+  );
+
+  // x-api-key SAI thì không được bỏ qua (deny-by-default).
+  const wrongKey = await postChat([{ role: 'user', content: 'Key sai.' }], {
+    'x-api-key': 'sai-hoan-toan',
+    'x-forwarded-for': LIMITED_IP,
+  });
+  await wrongKey.text();
+  check(
+    'B4d. x-api-key SAI thì KHÔNG được bỏ qua (vẫn bị 429)',
+    wrongKey.status === 429,
+    `status=${wrongKey.status}`,
+  );
+  check(
+    'B4d. health xác nhận đã bật apiKeyBypass',
+    (await fetchJson(`${APP_URL}/api/health?force=1`)).rateLimit?.apiKeyBypass === true,
+  );
+
+>>>>>>> 937fbcc (lastt)
   // ---- B5. Thiếu API key ----
   section('B5. CLOUD nhưng THIẾU API key');
   await stopApp(app);
@@ -523,7 +607,11 @@ try {
     GROQ_API_KEY: '',
     GROQ_MODEL: CLOUD_MODEL,
     GROQ_BASE_URL: `http://127.0.0.1:${CLOUD_MOCK_PORT}/v1`,
+<<<<<<< HEAD
     RATE_LIMIT_DISABLED: '1',
+=======
+    // Không đặt biến rate limit: mặc định đã tắt, không cần RATE_LIMIT_DISABLED nữa.
+>>>>>>> 937fbcc (lastt)
   });
 
   const missingHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
@@ -549,7 +637,10 @@ try {
     GROQ_MODEL: CLOUD_MODEL,
     // Trỏ vào mock luôn trả 401 → giả lập key sai/hết hạn.
     GROQ_BASE_URL: `http://127.0.0.1:${BADKEY_MOCK_PORT}/v1`,
+<<<<<<< HEAD
     RATE_LIMIT_DISABLED: '1',
+=======
+>>>>>>> 937fbcc (lastt)
   });
 
   const badHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
@@ -568,6 +659,85 @@ try {
     String(badBody.hint).includes('key'),
     String(badBody.hint).slice(0, 50),
   );
+<<<<<<< HEAD
+=======
+
+  /* =======================================================================
+   *  B7. HỒI QUY QUAN TRỌNG NHẤT — cấu hình sai KHÔNG được chặn tất cả
+   * ===================================================================== */
+  //
+  // Đây chính là sự cố production: `RATE_LIMIT_MAX` được khai báo nhưng để TRỐNG
+  // (hoặc =0) khiến MỌI request nhận 429 vĩnh viễn. Test này khoá hành vi đúng
+  // lại để nó không bao giờ tái diễn.
+  section('B7. Cấu hình rate limit SAI KIỂU không được phép chặn tất cả');
+
+  for (const [label, value] of [
+    ['để TRỐNG', ''],
+    ['bằng "0"', '0'],
+    ['số âm', '-5'],
+    ['chữ không phải số', 'linh tinh'],
+  ]) {
+    await stopApp(app);
+    app = await startApp({
+      LLM_PROVIDER: 'groq',
+      GROQ_API_KEY: CLOUD_KEY,
+      GROQ_MODEL: CLOUD_MODEL,
+      GROQ_BASE_URL: `http://127.0.0.1:${CLOUD_MOCK_PORT}/v1`,
+      RATE_LIMIT_ENABLED: '1',
+      RATE_LIMIT_MAX: value, // ⚠️ giá trị vô lý — phải được hiểu là "không đặt"
+    });
+
+    const health = await fetchJson(`${APP_URL}/api/health?force=1`);
+    check(
+      `B7. RATE_LIMIT_MAX ${label} → dùng lại mặc định rộng rãi (600)`,
+      health.rateLimit?.maxPerIp === 600,
+      `maxPerIp=${health.rateLimit?.maxPerIp}`,
+    );
+
+    const r = await postChat([{ role: 'user', content: 'vẫn phải trả lời được' }], {
+      'x-forwarded-for': LIMITED_IP,
+    });
+    await r.text();
+    check(`B7. RATE_LIMIT_MAX ${label} → request vẫn được phục vụ (200)`, r.status === 200, `status=${r.status}`);
+  }
+
+  /* =======================================================================
+   *  B8. Công tắc khoá khẩn cấp — phải bật TƯỜNG MINH
+   * ===================================================================== */
+  section('B8. KILL SWITCH — chỉ khoá khi được bật rõ ràng');
+
+  await stopApp(app);
+  app = await startApp({
+    LLM_PROVIDER: 'groq',
+    GROQ_API_KEY: CLOUD_KEY,
+    GROQ_MODEL: CLOUD_MODEL,
+    GROQ_BASE_URL: `http://127.0.0.1:${CLOUD_MOCK_PORT}/v1`,
+    RATE_LIMIT_ENABLED: '1',
+    RATE_LIMIT_KILL_SWITCH: '1',
+  });
+
+  const killedHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
+  check('B8. health báo killSwitch=true', killedHealth.rateLimit?.killSwitch === true);
+
+  const killed = await postChat([{ role: 'user', content: 'Có ai ở đó không?' }]);
+  const killedBody = await killed.json().catch(() => ({}));
+  check('B8. Mọi request bị 429 khi kill switch bật', killed.status === 429, `status=${killed.status}`);
+  check(
+    'B8. Header nói rõ reason=kill-switch',
+    killed.headers.get('x-ratelimit-reason') === 'kill-switch',
+    `reason=${killed.headers.get('x-ratelimit-reason')}`,
+  );
+  check(
+    'B8. Thông điệp là "đang bảo trì" (khác với "nhắn nhanh quá")',
+    typeof killedBody.error === 'string' && killedBody.error.includes('bảo trì'),
+    String(killedBody.error).slice(0, 40),
+  );
+  check(
+    'B8. hint giải thích do chủ nhân tạm khoá',
+    String(killedBody.hint).includes('tạm khoá'),
+    String(killedBody.hint).slice(0, 50),
+  );
+>>>>>>> 937fbcc (lastt)
 } catch (error) {
   console.error('\n💥 Smoke test lỗi:', error.message);
   // In stack để biết lỗi đến từ dòng nào — "fetch failed" một mình không đủ

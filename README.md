@@ -365,7 +365,11 @@ cp .env.example .env.local
 | `LLM_TEMPERATURE` | `0.85` | Độ "mềm mại" của câu trả lời |
 | `LLM_MAX_TOKENS` | `512` | Độ dài tối đa câu trả lời |
 | `OLLAMA_NUM_CTX` | `8192` | Cửa sổ ngữ cảnh (độ "nhớ" của Bestie) |
+<<<<<<< HEAD
 | `RATE_LIMIT_MAX` | `20` | Số tin nhắn tối đa mỗi IP mỗi 60 giây (chỉ nên bật khi public) |
+=======
+| `RATE_LIMIT_ENABLED` | *(tắt)* | `1` = bật giới hạn theo IP. Không đặt = tắt (mặc định, an toàn nhất) |
+>>>>>>> 937fbcc (lastt)
 
 ### 4.6. Chạy thử chế độ CLOUD ở máy (trong 2 phút)
 
@@ -521,7 +525,11 @@ tram-sac-cam-xuc/
 │   ├── system-prompt.ts         ❤️  LINH HỒN: System Prompt + lời chào + gợi ý mở đầu
 │   ├── ai.ts                    🔌 Lớp provider: Groq / OpenRouter / OpenAI-compatible / Ollama
 │   ├── llm-status.ts            🩺 Kiểm tra "bộ não" (key? mạng? model?) cho cả hai chế độ
+<<<<<<< HEAD
 │   ├── rate-limit.ts            ⏱️  Chặn lạm dụng: Upstash Redis hoặc bộ đếm trong RAM
+=======
+│   ├── rate-limit.ts            ⏱️  Chặn lạm dụng — MẶC ĐỊNH TẮT, bật bằng RATE_LIMIT_ENABLED=1
+>>>>>>> 937fbcc (lastt)
 │   ├── cors.ts                  🧩 CORS deny-by-default (chỉ dùng khi gọi từ origin khác)
 │   ├── format-message.tsx       ✍️  Render markdown nhẹ (**đậm**, *nghiêng*, `code`)
 │   └── utils.ts                 🔧 cn() — gộp class Tailwind (chuẩn shadcn/ui)
@@ -617,7 +625,11 @@ Câu trả lời **khác nhau** giữa hai chế độ. Bảng này nói rõ c�
 | Tôi có thể xem tính cách của Bestie không? | Có — [`lib/system-prompt.ts`](lib/system-prompt.ts). Đây là ứng dụng của bạn, không có gì bị giấu. | Giống hệt. Prompt vẫn nằm trong mã nguồn của **bạn**, chỉ được chèn ở server. |
 | Ai đó có chèn lệnh để đổi tính cách AI được không? | Không. Mọi tin nhắn `role: system` từ trình duyệt bị **loại bỏ** ở server trước khi tới model. | Giống hệt — cơ chế làm sạch là cùng một đoạn code, chạy cho mọi provider. |
 | App có gửi dữ liệu cho bên thứ ba nào khác không? | Không. Trong mã nguồn chỉ có hai địa chỉ ngoài: Google Fonts (chỉ tải font chữ) và Ollama local. | Chỉ tới nhà cung cấp model bạn chọn (+ Google Fonts cho font chữ). Không có analytics, không tracking. |
+<<<<<<< HEAD
 | Bị lạm dụng thì sao? | Không cần lo — không ai truy cập được từ ngoài. | Đã có rate limit theo IP (`lib/rate-limit.ts`) để bảo vệ quota. Xem [DEPLOYMENT_GUIDE.md §5](DEPLOYMENT_GUIDE.md). |
+=======
+| Bị lạm dụng thì sao? | Không cần lo — không ai truy cập được từ ngoài. | Có sẵn rate limit trong `lib/rate-limit.ts`, **mặc định TẮT**; bật bằng `RATE_LIMIT_ENABLED=1` khi bạn thấy cần. Xem [DEPLOYMENT_GUIDE.md §5.2](DEPLOYMENT_GUIDE.md). |
+>>>>>>> 937fbcc (lastt)
 
 ---
 
@@ -643,8 +655,13 @@ Câu trả lời **khác nhau** giữa hai chế độ. Bảng này nói rõ c�
 | Báo *"chưa có chìa khoá"* | Thiếu `GROQ_API_KEY` / `OPENROUTER_API_KEY` | Thêm vào `.env.local` (khi chạy ở máy) hoặc Vercel → Settings → Environment Variables, rồi **redeploy** |
 | Báo *"API key bị từ chối"* | Key sai, hết hạn, hoặc dán kèm dấu nháy/khoảng trắng | Tạo key mới và dán lại chính xác (không có `"` bao quanh) |
 | Lỗi *"model not found"* | Tên model sai, hoặc model đã bị nhà cung cấp ngừng cung cấp | Mở `/api/health` xem danh sách model khả dụng của key bạn, rồi sửa `GROQ_MODEL` |
+<<<<<<< HEAD
 | Người dùng nhận *"nhắn nhanh quá"* (429) | Rate limit của app (không phải của Groq) | Xem §5.2.1 của DEPLOYMENT_GUIDE.md — có lệnh `curl` để đọc header `X-RateLimit-*` và biết ngay nguyên nhân. Cách sửa nhanh: tăng `RATE_LIMIT_MAX=60`, hoặc thêm IP của bạn vào `RATE_LIMIT_BYPASS_IPS` |
 | Bị 429 khi test mà chưa gửi nhiều lần | Có thể `RATE_LIMIT_MAX=0` còn sót, hoặc IP bị chặn chung với người khác (nhà mạng dùng CGNAT) | Kiểm tra `x-ratelimit-limit` trong header; sửa `RATE_LIMIT_MAX` rồi **redeploy** |
+=======
+| Người dùng nhận *"nhắn nhanh quá"* (429) | Rate limit của app — nhưng **mặc định nó đang tắt**, nên chỉ xảy ra nếu bạn đã bật `RATE_LIMIT_ENABLED=1` | Xem §5.2.1 của DEPLOYMENT_GUIDE.md (có lệnh `curl` đọc header `X-RateLimit-*`). Cách sửa nhanh: xoá `RATE_LIMIT_ENABLED` để tắt hẳn, hoặc tăng `RATE_LIMIT_MAX` lên `600` |
+| Bị 429 ngay từ request đầu, mãi không hết | Rate limit đang bật với hạn mức quá thấp, hoặc `RATE_LIMIT_KILL_SWITCH=1` | Mở `/api/health`, xem mục `rateLimit`: `enabled` / `killSwitch` / `maxPerIp`. Bỏ kill switch hoặc xoá `RATE_LIMIT_ENABLED` rồi **redeploy** |
+>>>>>>> 937fbcc (lastt)
 | Tin nhắn đầu tiên chậm 5–15 giây | Cold start của serverless function | Bình thường; tin nhắn sau nhanh hơn |
 | Header báo `x-ratelimit-backend: memory` | Chưa cấu hình Upstash, hoặc dùng sai biến (`UPSTASH_REDIS_URL` thay vì `UPSTASH_REDIS_REST_URL`) | Bật Upstash theo hướng dẫn trong DEPLOYMENT_GUIDE.md §5.2 |
 | Lỗi *"blocked by CORS policy"* | Frontend đang gọi URL tuyệt đối sang origin khác | Dùng đường dẫn tương đối `/api/chat`; xem Phụ lục A của DEPLOYMENT_GUIDE.md |
