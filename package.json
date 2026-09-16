@@ -2,7 +2,7 @@
   "name": "tram-sac-cam-xuc",
   "version": "1.0.0",
   "private": true,
-  "description": "Trạm Sạc Cảm Xúc của LHP và TDT hjhj — Web chat chữa lành, chạy hoàn toàn local với Ollama.",
+  "description": "Trạm Sạc Cảm Xúc của LHP và TDT hjhj — Web chat chữa lành, chạy bằng Ollama local hoặc Groq/OpenRouter trên cloud.",
   "engines": {
     "node": ">=20.0.0"
   },
@@ -12,7 +12,15 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf .next node_modules"
+    "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
+
+    "preflight": "node tools/preflight.mjs",
+    "verify": "node tools/preflight.mjs --full",
+    "check:conflicts": "node tools/check-conflicts.mjs",
+    "fix:conflicts": "node tools/fix-conflicts.mjs",
+    "smoke": "node tools/smoke-test.mjs",
+    "hooks:install": "node tools/install-git-hooks.mjs",
+    "hooks:remove": "node tools/install-git-hooks.mjs --remove"
   },
   "dependencies": {
     "@ai-sdk/openai": "0.0.72",

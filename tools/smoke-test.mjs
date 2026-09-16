@@ -30,7 +30,8 @@
  *  Yêu cầu:    đã `pnpm build`
  */
 import { spawn } from 'node:child_process';
-import { readFileSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 // ---------------------------------------------------------------------------
@@ -57,11 +58,8 @@ const CLOUD_KEY = 'gsk_test_key_12345';
 /** Các IP giả để kiểm tra rate limit tách biệt giữa các "người dùng". */
 const LIMITED_IP = '203.0.113.10';
 const BYPASS_IP = '198.51.100.7';
-<<<<<<< HEAD
-=======
 /** API key dùng để kiểm tra đường bỏ qua rate limit khi tích hợp hệ thống. */
 const API_KEY = 'api_key_test_9876543210';
->>>>>>> 937fbcc (lastt)
 /** Cổng không tồn tại — dùng để giả lập "provider không kết nối được". */
 const DEAD_URL = 'http://127.0.0.1:9';
 
@@ -254,6 +252,72 @@ function assertAlive(child, label) {
 }
 
 // ---------------------------------------------------------------------------
+//  CHỐT 0: quét conflict marker trong mã nguồn
+// ---------------------------------------------------------------------------
+//
+// Vì sao kiểm tra việc này trong một smoke test chức năng?
+//
+// Vì một lần commit còn sót `<<<<<<< HEAD` đã làm Vercel build fail với lỗi
+// "Merge conflict marker encountered" — trong khi ở máy, nếu chỉ chạy
+// `typecheck`/`lint` thì vẫn có thể lọt (chúng cũng báo lỗi, nhưng thông báo
+// khó đọc và dễ bị bỏ qua giữa hàng trăm dòng log). Lỗi này tốn một vòng deploy
+// và một vòng hỏi đáp hoàn toàn không cần thiết.
+//
+// Quét ngay đầu smoke test để phát hiện TRƯỚC khi push. Chỉ mất vài mili-giây.
+const MARKER_RE = /^(<{7}|={7}|>{7})/m;
+const SKIP_DIRS = new Set(['node_modules', '.next', '.git', '.toolchain', '__pycache__']);
+
+function findConflictMarkers(rootDir) {
+  const hits = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      // Chỉ quét file văn bản mà dự án thực sự dùng.
+      if (!/\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|example|yml|yaml)$/.test(entry.name)) continue;
+      let text;
+      try {
+        text = readFileSync(full, 'utf8');
+      } catch {
+        continue;
+      }
+      if (MARKER_RE.test(text)) hits.push(relative(rootDir, full));
+    }
+  };
+  walk(rootDir);
+  return hits;
+}
+
+{
+  section('0. Kiểm tra mã nguồn trước khi build (conflict marker)');
+  const projectRoot = process.cwd();
+  const hits = findConflictMarkers(projectRoot);
+  check(
+    'Không có file nào còn sót conflict marker (<<<<<<< / ======= / >>>>>>>)',
+    hits.length === 0,
+    hits.length ? `CÒN SÓT: ${hits.join(', ')}` : 'sạch',
+  );
+  if (hits.length > 0) {
+    console.error(
+      '\n⚠️  Dừng sớm: sửa các file trên (xoá marker, giữ lại đúng nội dung) rồi chạy lại.\n' +
+        '    Cách tìm nhanh:  git grep -nE "^(<{7}|={7}|>{7})"\n' +
+        '    Kiểm tra Git có còn file conflict:  git diff --check\n',
+    );
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
 //  Khởi động các server giả
 // ---------------------------------------------------------------------------
 await assertPortFree(APP_PORT, 'app');
@@ -315,11 +379,7 @@ try {
     LLM_PROVIDER: 'ollama',
     OLLAMA_BASE_URL: `http://127.0.0.1:${OLLAMA_MOCK_PORT}/api`,
     OLLAMA_MODEL,
-<<<<<<< HEAD
-    RATE_LIMIT_DISABLED: '1', // kịch bản A không kiểm tra rate limit
-=======
     // KHÔNG đặt biến RATE_LIMIT_* nào — kịch bản A kiểm tra đúng hành vi mặc định.
->>>>>>> 937fbcc (lastt)
   });
   check('Next server đã lên', true, APP_URL);
 
@@ -371,8 +431,6 @@ try {
   check('A4. keep_alive được tiêm', localDump.keep_alive === '30m', String(localDump.keep_alive));
   check('A4. num_ctx = 8192', localDump.options?.num_ctx === 8192, String(localDump.options?.num_ctx));
 
-<<<<<<< HEAD
-=======
   // ---- A6. Rate limit PHẢI tắt mặc định ----
   // Đây là bài kiểm tra hồi quy cho sự cố production thật: app từng trả 429 cho
   // MỌI request vì một biến môi trường được khai báo nhưng để trống/đặt =0.
@@ -400,7 +458,6 @@ try {
   }
   check('A6. 5 request liên tiếp đều 200 khi rate limit tắt', defaultAllOk);
 
->>>>>>> 937fbcc (lastt)
   await stopApp(app);
   app = await startApp({
     LLM_PROVIDER: 'ollama',
@@ -431,20 +488,14 @@ try {
     GROQ_MODEL: CLOUD_MODEL,
     GROQ_BASE_URL: `http://127.0.0.1:${CLOUD_MOCK_PORT}/v1`,
     // Cố tình đặt thấp để kiểm tra được nhánh 429 chỉ với vài request.
-<<<<<<< HEAD
-=======
     // ⚠️  Phải bật tường minh bằng RATE_LIMIT_ENABLED — mặc định là TẮT.
     RATE_LIMIT_ENABLED: '1',
->>>>>>> 937fbcc (lastt)
     RATE_LIMIT_MAX: '1',
     RATE_LIMIT_WINDOW: '60',
     // IP này phải được bỏ qua hoàn toàn — dùng cho chính người vận hành test.
     RATE_LIMIT_BYPASS_IPS: BYPASS_IP,
-<<<<<<< HEAD
-=======
     // Đường bỏ qua thứ hai, dành cho tích hợp hệ thống (header x-api-key).
     RATE_LIMIT_API_KEY: API_KEY,
->>>>>>> 937fbcc (lastt)
   });
 
   // Trước khi kiểm tra, chắc chắn server giả còn sống — nếu nó đã chết thì báo
@@ -564,8 +615,6 @@ try {
     `backend=${bypassed.headers.get('x-ratelimit-backend')}`,
   );
 
-<<<<<<< HEAD
-=======
   // Đường bỏ qua thứ hai: x-api-key khớp RATE_LIMIT_API_KEY (dùng cho tích hợp).
   const keyed = await postChat([{ role: 'user', content: 'Tớ gọi từ hệ thống khác.' }], {
     'x-api-key': API_KEY,
@@ -598,7 +647,6 @@ try {
     (await fetchJson(`${APP_URL}/api/health?force=1`)).rateLimit?.apiKeyBypass === true,
   );
 
->>>>>>> 937fbcc (lastt)
   // ---- B5. Thiếu API key ----
   section('B5. CLOUD nhưng THIẾU API key');
   await stopApp(app);
@@ -607,11 +655,7 @@ try {
     GROQ_API_KEY: '',
     GROQ_MODEL: CLOUD_MODEL,
     GROQ_BASE_URL: `http://127.0.0.1:${CLOUD_MOCK_PORT}/v1`,
-<<<<<<< HEAD
-    RATE_LIMIT_DISABLED: '1',
-=======
     // Không đặt biến rate limit: mặc định đã tắt, không cần RATE_LIMIT_DISABLED nữa.
->>>>>>> 937fbcc (lastt)
   });
 
   const missingHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
@@ -637,10 +681,6 @@ try {
     GROQ_MODEL: CLOUD_MODEL,
     // Trỏ vào mock luôn trả 401 → giả lập key sai/hết hạn.
     GROQ_BASE_URL: `http://127.0.0.1:${BADKEY_MOCK_PORT}/v1`,
-<<<<<<< HEAD
-    RATE_LIMIT_DISABLED: '1',
-=======
->>>>>>> 937fbcc (lastt)
   });
 
   const badHealth = await fetchJson(`${APP_URL}/api/health?force=1`);
@@ -659,8 +699,6 @@ try {
     String(badBody.hint).includes('key'),
     String(badBody.hint).slice(0, 50),
   );
-<<<<<<< HEAD
-=======
 
   /* =======================================================================
    *  B7. HỒI QUY QUAN TRỌNG NHẤT — cấu hình sai KHÔNG được chặn tất cả
@@ -737,7 +775,6 @@ try {
     String(killedBody.hint).includes('tạm khoá'),
     String(killedBody.hint).slice(0, 50),
   );
->>>>>>> 937fbcc (lastt)
 } catch (error) {
   console.error('\n💥 Smoke test lỗi:', error.message);
   // In stack để biết lỗi đến từ dòng nào — "fetch failed" một mình không đủ

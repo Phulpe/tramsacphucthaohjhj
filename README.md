@@ -11,6 +11,45 @@ Chế độ CLOUD:   Người dùng ⇄ Vercel (Next.js + /api/chat) ⇄ Groq / 
 
 ---
 
+## ⚡ Bắt đầu nhanh — và không gặp lỗi nữa
+
+Dự án có sẵn **bộ kiểm tra tự động** chặn đúng ba lỗi đã từng xảy ra trên production (xem bảng bên dưới). Chạy 4 lệnh này là đủ:
+
+```bash
+# 0) Một lần duy nhất, sau khi clone/copy dự án về
+node tools/install-git-hooks.mjs      # Git sẽ tự chặn commit nếu còn conflict marker
+
+# 1) Kiểm tra nhanh (~20 giây): conflict marker, cấu hình, TypeScript, ESLint
+npm run preflight
+
+# 2) Trước khi push — kiểm tra ĐẦY ĐỦ, gồm build và 88 phép kiểm end-to-end (~3 phút)
+npm run verify
+
+# 3) Nếu bước 1 báo còn conflict marker — sửa tự động (có sao lưu .bak)
+npm run fix:conflicts
+```
+
+Kết quả mong đợi ở cuối mỗi lần chạy:
+
+```text
+════════════════════════════════════════════════════════════════
+✅ TẤT CẢ ĐỀU PASS
+An toàn để push. Vercel sẽ build lại từ đầu — và sẽ chạy được.
+════════════════════════════════════════════════════════════════
+```
+
+### Ba lỗi đã từng xảy ra, và giờ được chặn ở đâu
+
+| Lỗi đã gặp trên production | Nguyên nhân gốc | Giờ bị chặn bởi |
+| --- | --- | --- |
+| 🔴 **429 cho MỌI request** | `RATE_LIMIT_MAX` khai báo nhưng để **trống** → `Number('') === 0` → hạn mức 0. Rate limit **giờ mặc định TẮT**; giá trị vô lý được tự bỏ qua và dùng 600 | `npm run preflight` bước 2 |
+| 🔴 **Vercel build fail:** *"Merge conflict marker encountered"* | Một lần merge còn sót `<<<<<<< HEAD` và đã bị commit | git hook + `npm run preflight` bước 1 |
+| 🔴 **Giải nén ZIP đè lên repo không có tác dụng** | ZIP có thư mục bao ngoài, giải nén thẳng vào repo tạo `repo/tram-sac-cam-xuc/…` (lồng nhau) → build vẫn dùng file cũ | cảnh báo trong [DEPLOYMENT_GUIDE.md §3.1](DEPLOYMENT_GUIDE.md) |
+
+> **Nếu bạn chỉ nhớ một điều:** chạy `npm run verify` trước mỗi lần push. Lệnh đó chạy 6 bước và dừng ngay ở lỗi đầu tiên, kèm hướng dẫn sửa.
+
+---
+
 ## ⚡ Chọn cách chạy (đọc trước khi cài)
 
 Cùng một mã nguồn, **hai chế độ**. App tự nhận biết chế độ nào đang được cấu hình — bạn không phải sửa một dòng code nào.
@@ -365,11 +404,7 @@ cp .env.example .env.local
 | `LLM_TEMPERATURE` | `0.85` | Độ "mềm mại" của câu trả lời |
 | `LLM_MAX_TOKENS` | `512` | Độ dài tối đa câu trả lời |
 | `OLLAMA_NUM_CTX` | `8192` | Cửa sổ ngữ cảnh (độ "nhớ" của Bestie) |
-<<<<<<< HEAD
-| `RATE_LIMIT_MAX` | `20` | Số tin nhắn tối đa mỗi IP mỗi 60 giây (chỉ nên bật khi public) |
-=======
 | `RATE_LIMIT_ENABLED` | *(tắt)* | `1` = bật giới hạn theo IP. Không đặt = tắt (mặc định, an toàn nhất) |
->>>>>>> 937fbcc (lastt)
 
 ### 4.6. Chạy thử chế độ CLOUD ở máy (trong 2 phút)
 
@@ -525,18 +560,18 @@ tram-sac-cam-xuc/
 │   ├── system-prompt.ts         ❤️  LINH HỒN: System Prompt + lời chào + gợi ý mở đầu
 │   ├── ai.ts                    🔌 Lớp provider: Groq / OpenRouter / OpenAI-compatible / Ollama
 │   ├── llm-status.ts            🩺 Kiểm tra "bộ não" (key? mạng? model?) cho cả hai chế độ
-<<<<<<< HEAD
-│   ├── rate-limit.ts            ⏱️  Chặn lạm dụng: Upstash Redis hoặc bộ đếm trong RAM
-=======
 │   ├── rate-limit.ts            ⏱️  Chặn lạm dụng — MẶC ĐỊNH TẮT, bật bằng RATE_LIMIT_ENABLED=1
->>>>>>> 937fbcc (lastt)
 │   ├── cors.ts                  🧩 CORS deny-by-default (chỉ dùng khi gọi từ origin khác)
 │   ├── format-message.tsx       ✍️  Render markdown nhẹ (**đậm**, *nghiêng*, `code`)
 │   └── utils.ts                 🔧 cn() — gộp class Tailwind (chuẩn shadcn/ui)
 ├── tools/
+│   ├── preflight.mjs            🔎 MỘT LỆNH kiểm tra tất cả trước khi push (npm run verify)
+│   ├── check-conflicts.mjs      🔍 Quét conflict marker còn sót (chạy trước khi push!)
+│   ├── fix-conflicts.mjs        🔧 Tự sửa conflict marker (có sao lưu .bak)
+│   ├── install-git-hooks.mjs    🪝 Cài hook để Git tự chặn commit lỗi
 │   ├── mock-ollama.mjs          🧪 Ollama giả — test chế độ local, không cần model 5GB
 │   ├── mock-groq.mjs            🧪 Groq/OpenAI giả (SSE) — test chế độ cloud, không cần key
-│   └── smoke-test.mjs           ✅ Kiểm thử end-to-end tự động (cả local + cloud)
+│   └── smoke-test.mjs           ✅ Kiểm thử end-to-end tự động (88 phép kiểm)
 ├── .env.example                 ⚙️  Mẫu cấu hình (local + cloud + rate limit + CORS)
 ├── DEPLOYMENT_GUIDE.md          🚀 Hướng dẫn deploy Vercel, tên miền, chi phí
 ├── tailwind.config.ts           🎨 Theme tokens
@@ -563,15 +598,25 @@ tram-sac-cam-xuc/
 Dự án kèm sẵn bộ kiểm thử chạy **hoàn toàn offline**, không cần GPU và không cần tải model:
 
 ```bash
-# 1) Kiểm tra kiểu dữ liệu TypeScript
+# 1) Kiểm tra mã nguồn có sạch không (bắt conflict marker trước khi build)
+node tools/check-conflicts.mjs
+
+# 2) Kiểm tra kiểu dữ liệu TypeScript
 npm run typecheck
 
-# 2) Build production
+# 3) Build production
 npm run build
 
-# 3) Smoke test end-to-end (tự dựng server giả + Next server rồi kiểm tra)
+# 4) Smoke test end-to-end (tự dựng server giả + Next server rồi kiểm tra)
 node tools/smoke-test.mjs
 ```
+
+> 🔍 **Vì sao bước 1 quan trọng:** nếu một lần merge còn sót `<<<<<<< HEAD`, `npm run build` sẽ fail với lỗi *"Merge conflict marker encountered"*, và trên Vercel thì mất trắng một vòng deploy. `tools/check-conflicts.mjs` chỉ mất ~0,1 giây và chỉ đúng tên file + số dòng. Muốn tự động hoá, thêm git hook:
+>
+> ```bash
+> printf '#!/bin/sh\nnode tools/check-conflicts.mjs || exit 1\n' > .git/hooks/pre-commit
+> chmod +x .git/hooks/pre-commit
+> ```
 
 `smoke-test.mjs` chạy **cả hai chế độ** và in ra kết quả từng phép kiểm:
 
@@ -625,11 +670,7 @@ Câu trả lời **khác nhau** giữa hai chế độ. Bảng này nói rõ c�
 | Tôi có thể xem tính cách của Bestie không? | Có — [`lib/system-prompt.ts`](lib/system-prompt.ts). Đây là ứng dụng của bạn, không có gì bị giấu. | Giống hệt. Prompt vẫn nằm trong mã nguồn của **bạn**, chỉ được chèn ở server. |
 | Ai đó có chèn lệnh để đổi tính cách AI được không? | Không. Mọi tin nhắn `role: system` từ trình duyệt bị **loại bỏ** ở server trước khi tới model. | Giống hệt — cơ chế làm sạch là cùng một đoạn code, chạy cho mọi provider. |
 | App có gửi dữ liệu cho bên thứ ba nào khác không? | Không. Trong mã nguồn chỉ có hai địa chỉ ngoài: Google Fonts (chỉ tải font chữ) và Ollama local. | Chỉ tới nhà cung cấp model bạn chọn (+ Google Fonts cho font chữ). Không có analytics, không tracking. |
-<<<<<<< HEAD
-| Bị lạm dụng thì sao? | Không cần lo — không ai truy cập được từ ngoài. | Đã có rate limit theo IP (`lib/rate-limit.ts`) để bảo vệ quota. Xem [DEPLOYMENT_GUIDE.md §5](DEPLOYMENT_GUIDE.md). |
-=======
 | Bị lạm dụng thì sao? | Không cần lo — không ai truy cập được từ ngoài. | Có sẵn rate limit trong `lib/rate-limit.ts`, **mặc định TẮT**; bật bằng `RATE_LIMIT_ENABLED=1` khi bạn thấy cần. Xem [DEPLOYMENT_GUIDE.md §5.2](DEPLOYMENT_GUIDE.md). |
->>>>>>> 937fbcc (lastt)
 
 ---
 
@@ -655,16 +696,12 @@ Câu trả lời **khác nhau** giữa hai chế độ. Bảng này nói rõ c�
 | Báo *"chưa có chìa khoá"* | Thiếu `GROQ_API_KEY` / `OPENROUTER_API_KEY` | Thêm vào `.env.local` (khi chạy ở máy) hoặc Vercel → Settings → Environment Variables, rồi **redeploy** |
 | Báo *"API key bị từ chối"* | Key sai, hết hạn, hoặc dán kèm dấu nháy/khoảng trắng | Tạo key mới và dán lại chính xác (không có `"` bao quanh) |
 | Lỗi *"model not found"* | Tên model sai, hoặc model đã bị nhà cung cấp ngừng cung cấp | Mở `/api/health` xem danh sách model khả dụng của key bạn, rồi sửa `GROQ_MODEL` |
-<<<<<<< HEAD
-| Người dùng nhận *"nhắn nhanh quá"* (429) | Rate limit của app (không phải của Groq) | Xem §5.2.1 của DEPLOYMENT_GUIDE.md — có lệnh `curl` để đọc header `X-RateLimit-*` và biết ngay nguyên nhân. Cách sửa nhanh: tăng `RATE_LIMIT_MAX=60`, hoặc thêm IP của bạn vào `RATE_LIMIT_BYPASS_IPS` |
-| Bị 429 khi test mà chưa gửi nhiều lần | Có thể `RATE_LIMIT_MAX=0` còn sót, hoặc IP bị chặn chung với người khác (nhà mạng dùng CGNAT) | Kiểm tra `x-ratelimit-limit` trong header; sửa `RATE_LIMIT_MAX` rồi **redeploy** |
-=======
 | Người dùng nhận *"nhắn nhanh quá"* (429) | Rate limit của app — nhưng **mặc định nó đang tắt**, nên chỉ xảy ra nếu bạn đã bật `RATE_LIMIT_ENABLED=1` | Xem §5.2.1 của DEPLOYMENT_GUIDE.md (có lệnh `curl` đọc header `X-RateLimit-*`). Cách sửa nhanh: xoá `RATE_LIMIT_ENABLED` để tắt hẳn, hoặc tăng `RATE_LIMIT_MAX` lên `600` |
 | Bị 429 ngay từ request đầu, mãi không hết | Rate limit đang bật với hạn mức quá thấp, hoặc `RATE_LIMIT_KILL_SWITCH=1` | Mở `/api/health`, xem mục `rateLimit`: `enabled` / `killSwitch` / `maxPerIp`. Bỏ kill switch hoặc xoá `RATE_LIMIT_ENABLED` rồi **redeploy** |
->>>>>>> 937fbcc (lastt)
 | Tin nhắn đầu tiên chậm 5–15 giây | Cold start của serverless function | Bình thường; tin nhắn sau nhanh hơn |
 | Header báo `x-ratelimit-backend: memory` | Chưa cấu hình Upstash, hoặc dùng sai biến (`UPSTASH_REDIS_URL` thay vì `UPSTASH_REDIS_REST_URL`) | Bật Upstash theo hướng dẫn trong DEPLOYMENT_GUIDE.md §5.2 |
 | Lỗi *"blocked by CORS policy"* | Frontend đang gọi URL tuyệt đối sang origin khác | Dùng đường dẫn tương đối `/api/chat`; xem Phụ lục A của DEPLOYMENT_GUIDE.md |
+| Build trên Vercel fail: *"Merge conflict marker encountered"* | Một lần merge còn sót `<<<<<<< HEAD` / `=======` / `>>>>>>>` trong file nguồn | Chạy `node tools/check-conflicts.mjs` để biết file + số dòng, xoá marker, rồi push lại. Kiểm tra thêm: `git diff --check`, `git grep -nE "^(<{7}|={7}|>{7})"` |
 | Bestie trả lời tiếng Anh | Model không bám prompt | Đổi sang `openai/gpt-oss-120b`, hoặc thêm *"Luôn trả lời bằng tiếng Việt"* vào khối `[TONE & CHAT UI BEHAVIOR]` |
 | Lỗi `model_decommissioned` / không tìm thấy model | Model đã bị nhà cung cấp ngừng cung cấp (ví dụ `llama-3.1-8b-instant` bị Groq deprecate từ 16/08/2026) | Đổi sang model còn hiệu lực: `openai/gpt-oss-20b`. Kiểm tra `curl -s https://console.groq.com/docs/deprecations.md` |
 | Hết quota giữa ngày dù mới có vài người dùng | Trần thật là **token/ngày** (200K TPD ở free tier ≈ chỉ 50–130 lượt chat/ngày toàn hệ thống) | Xem §5.1; nâng lên Developer plan hoặc chuyển sang OpenRouter |

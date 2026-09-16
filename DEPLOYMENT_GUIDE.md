@@ -204,6 +204,55 @@ git push -u origin main
 ```
 
 > 🧹 **Kiểm tra trước khi push lần đầu:** file `.gitignore` của dự án đã loại `node_modules/`, `.next/`, `.env`, `.env.local`. Hãy giữ nguyên — `node_modules` có thể nặng hàng trăm MB và chứa binary riêng cho từng hệ điều hành; Vercel sẽ tự chạy `npm install`.
+>
+> ⚠️ **Cẩn thận khi giải nén gói ZIP đè lên repo — bẫy im lặng số 1.** Gói ZIP có **thư mục bao ngoài cùng tên dự án**, nên nếu giải nén thẳng vào repo bạn sẽ được `repo/tram-sac-cam-xuc/...` (lồng nhau). Khi đó **build vẫn dùng file CŨ**, và bạn sẽ tưởng "sửa rồi mà không có tác dụng". Cách an toàn:
+>
+> ```bash
+> # Linux / macOS / WSL / Git Bash
+> unzip -o tram-sac-cam-xuc.zip -d /tmp/bestie-clean
+> cp -r /tmp/bestie-clean/tram-sac-cam-xuc/. <đường-dẫn-repo-của-bạn>/
+> ```
+>
+> ```powershell
+> # Windows PowerShell
+> Expand-Archive -Path .\tram-sac-cam-xuc.zip -DestinationPath "$env:TEMP\bestie-clean" -Force
+> Copy-Item -Path "$env:TEMP\bestie-clean\tram-sac-cam-xuc\*" -Destination "<đường-dẫn-repo>" -Recurse -Force
+> ```
+>
+> Sau khi copy, kiểm tra không có thư mục lồng nhau:
+>
+> ```bash
+> ls <đường-dẫn-repo>              # phải thấy thẳng: app/ components/ lib/ tools/ package.json
+> # Nếu thấy một thư mục tên 'tram-sac-cam-xuc' nằm trong đó → bạn đã giải nén sai, xoá nó đi
+> ```
+
+#### 3.1.1. Cài chốt kiểm tra tự động (làm một lần, đừng bỏ qua)
+
+Đây là phần giúp bạn **không còn gặp lại lỗi đã từng mất một vòng deploy**:
+
+```bash
+# Cài git hook: từ giờ Git tự chặn commit nếu mã nguồn còn conflict marker
+node tools/install-git-hooks.mjs
+
+# Kiểm tra nhanh (~20 giây)
+npm run preflight
+
+# Kiểm tra ĐẦY ĐỦ trước khi push (~3 phút, gồm build + smoke test 88 phép kiểm)
+npm run verify
+```
+
+Lệnh `npm run verify` chạy 6 bước và **dừng ngay ở lỗi đầu tiên**, kèm hướng dẫn sửa cụ thể:
+
+| Bước | Kiểm tra | Bắt lỗi gì đã từng xảy ra |
+| --- | --- | --- |
+| 1 | Conflict marker trong mã nguồn | *"Merge conflict marker encountered"* làm Vercel build fail |
+| 2 | Cấu hình rate limit | `RATE_LIMIT_MAX` để trống → mọi request 429 |
+| 3 | TypeScript | Lỗi kiểu dữ liệu |
+| 4 | ESLint | Cảnh báo/lỗi lint |
+| 5 | Build production | Mọi lỗi build còn lại |
+| 6 | Smoke test end-to-end (88 phép kiểm) | Lỗi logic: system prompt, streaming, rate limit, thiếu key… |
+
+> 💡 **Chỉ cần nhớ một lệnh:** `npm run verify` trước mỗi lần push. Nếu nó in `✅ TẤT CẢ ĐỀU PASS`, bạn có thể push mà không phải lo.
 
 ### 3.2. Kết nối GitHub với Vercel
 
@@ -243,29 +292,18 @@ Vẫn ở trang cấu hình (hoặc sau này: **Project → Settings → Environ
 | `GROQ_API_KEY` | `gsk_...` (key thật của bạn) | Production, Preview, Development |
 | `GROQ_MODEL` | `openai/gpt-oss-20b` | Production, Preview, Development |
 
-<<<<<<< HEAD
-**Nên thêm (bảo vệ quota):**
-
-| Key | Value | Vì sao |
-| --- | --- | --- |
-| `RATE_LIMIT_MAX` | `20` | Tối đa 20 tin nhắn / IP / cửa sổ |
-=======
 **Nên thêm (chỉ khi URL đã công khai — mặc định rate limit đang TẮT):**
 
 | Key | Value | Vì sao |
 | --- | --- | --- |
 | `RATE_LIMIT_ENABLED` | `1` | Bật giới hạn theo IP. **Không đặt = tắt, app chạy bình thường** |
 | `RATE_LIMIT_MAX` | `600` | Tối đa 600 tin nhắn / IP / cửa sổ (rộng rãi, tránh chặn nhầm do CGNAT) |
->>>>>>> 937fbcc (lastt)
 | `RATE_LIMIT_WINDOW` | `60` | Cửa sổ 60 giây |
 | `LLM_MAX_TOKENS` | `512` | Chặn câu trả lời dài bất thường (đốt quota) |
 | `HEALTH_TIMEOUT_MS` | `2500` | Kiểm tra provider nhanh |
 
-<<<<<<< HEAD
-=======
 **Nếu bạn đang tích hợp app vào hệ thống của mình:** đừng đặt `RATE_LIMIT_ENABLED` (để tắt). Nếu buộc phải bật mà vẫn cần gọi ổn định từ hệ thống khác, dùng `RATE_LIMIT_API_KEY=<chuỗi bí mật>` và gửi header `x-api-key`.
 
->>>>>>> 937fbcc (lastt)
 **Nếu muốn rate limit chính xác trên toàn hệ thống** (xem §5.3): `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
 
 **Nếu dùng OpenRouter thay Groq:** `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY=sk-or-v1-...`, `OPENROUTER_MODEL=qwen/qwen-2.5-7b-instruct`.
@@ -520,15 +558,6 @@ Với `openai/gpt-oss-20b` free tier, bạn có 1.000 request/ngày nhưng chỉ
 
 ### 5.2. Bảo vệ bằng rate limit (đã có sẵn trong code)
 
-<<<<<<< HEAD
-Dự án đã tích hợp rate limit trong `lib/rate-limit.ts`, không cần cài thêm gì:
-
-```env
-RATE_LIMIT_MAX=20        # 20 tin nhắn...
-RATE_LIMIT_WINDOW=60     # ...mỗi 60 giây, cho mỗi IP
-```
-
-=======
 Dự án đã tích hợp rate limit trong `lib/rate-limit.ts` — **mặc định TẮT**, chỉ bật khi bạn đặt `RATE_LIMIT_ENABLED=1`:
 
 ```env
@@ -568,7 +597,6 @@ curl -s https://ten-mien-cua-ban/api/health | python -m json.tool | grep -A 12 '
 | `RATE_LIMIT_API_KEY=<chuỗi bí mật>` + header `x-api-key` | Hệ thống khác gọi API của bạn, không muốn bị giới hạn theo IP |
 | `RATE_LIMIT_KILL_SWITCH=1` | Khoá toàn bộ khẩn cấp (mọi request nhận 429 kèm thông báo "đang bảo trì") |
 
->>>>>>> 937fbcc (lastt)
 **Hai chế độ, khác nhau ở độ chính xác:**
 
 | | Không cấu hình Upstash | Có cấu hình Upstash Redis |
@@ -603,16 +631,6 @@ x-ratelimit-backend: memory      ← 'upstash' là chính xác, 'memory' là bes
 
 **Tinh chỉnh con số cho hợp lý:**
 
-<<<<<<< HEAD
-| Mục tiêu | `RATE_LIMIT_MAX` | `RATE_LIMIT_WINDOW` |
-| --- | --- | --- |
-| Bản demo cho vài người bạn | `10` | `60` |
-| Công khai vừa phải — **cân bằng, khuyến nghị** | `60` | `60` |
-| Chỉ dùng một mình | `60` | `60` |
-| **Khoá tạm toàn bộ (xem §5.6)** | `0` | `60` |
-
-> ⚠️ **Vì sao tôi đổi khuyến nghị từ 20 lên 60:** ở Việt Nam, nhà mạng dùng **CGNAT** rất phổ biến — hàng chục đến hàng trăm người thật có thể dùng **chung một IP công cộng**. Với `20`, chỉ cần một người trong khu nhà bạn nhắn nhiều là cả xóm bị chặn, mà không ai hiểu vì sao. `60/phút cho mỗi IP` vẫn chặn tốt bot (bot thô gọi hàng nghìn lần/phút) mà hầu như không chặn nhầm người thật. Đây là đánh đổi có chủ đích.
-=======
 | Mục tiêu | `RATE_LIMIT_ENABLED` | `RATE_LIMIT_MAX` | `RATE_LIMIT_WINDOW` |
 | --- | --- | --- | --- |
 | **Mặc định / tích hợp hệ thống (khuyến nghị)** | *(không đặt)* | — | — |
@@ -624,7 +642,6 @@ x-ratelimit-backend: memory      ← 'upstash' là chính xác, 'memory' là bes
 > 💡 **Nếu bạn đang tích hợp app vào hệ thống của mình và cần chạy ổn định: cứ để rate limit TẮT** (đừng đặt biến nào). Nó chỉ thật sự cần khi URL của bạn được chia sẻ công khai cho người lạ. Khi đã bật và cần gọi từ hệ thống khác, dùng `RATE_LIMIT_API_KEY` + header `x-api-key` thay vì nới con số cho mọi người.
 
 > ⚠️ **Vì sao khuyến nghị là "để TẮT" khi tích hợp:** ở Việt Nam, nhà mạng dùng **CGNAT** rất phổ biến — hàng chục đến hàng trăm người thật có thể dùng **chung một IP công cộng**. Đếm theo IP vì thế vừa dễ chặn nhầm người thật, vừa **không** bảo vệ được quota (1.000 người khác IP vẫn cùng đốt hết hạn mức tổ chức). Khi đã bật, `RATE_LIMIT_MAX=600`/phút là mức rộng rãi: vẫn chặn bot thô gọi hàng nghìn lần mỗi phút, mà gần như không chạm tới người dùng thật. Nếu cần bảo vệ quota thật, hãy dùng `GLOBAL_DAILY_MAX` kèm Upstash thay vì siết IP.
->>>>>>> 937fbcc (lastt)
 
 #### 5.2.1. Gặp lỗi 429 trên Vercel — cách chẩn đoán trong 1 phút
 
@@ -683,16 +700,10 @@ Giờ trong **Vercel → Logs** cũng có dòng cảnh báo cho mỗi lần ch�
 | Bạn đang tự test và bấm gửi liên tục | Thêm IP của bạn vào `RATE_LIMIT_BYPASS_IPS` (`curl ifconfig.me` để lấy IP), redeploy |
 | Hạn mức quá thấp cho lưu lượng thật (nhiều `ip_fp` khác nhau) | Tăng `RATE_LIMIT_MAX` lên 60–200 |
 | Nhiều người dùng chung một IP (CGNAT, wifi công cộng, công ty) | Tăng `RATE_LIMIT_MAX`; đây là hạn chế cố hữu của việc đếm theo IP |
-<<<<<<< HEAD
-| `x-ratelimit-limit: 0` | Bạn (hoặc một lần thử nghiệm trước) đã đặt `RATE_LIMIT_MAX=0` — công tắc khoá khẩn cấp. Sửa về `60` |
-| `x-ratelimit-backend: bypass` xuất hiện ở mọi request | IP của bạn đang nằm trong `RATE_LIMIT_BYPASS_IPS` |
-| Muốn kiểm tra phần còn lại trước, tính sau | Đặt tạm `RATE_LIMIT_DISABLED=1` → redeploy → kiểm tra chat chạy được → **xoá biến này ngay khi xong** |
-=======
 | `x-ratelimit-limit: 0` | Đang bật `RATE_LIMIT_KILL_SWITCH=1` (khoá toàn bộ có chủ đích) | Bỏ biến `RATE_LIMIT_KILL_SWITCH` rồi **redeploy** |
 | `x-ratelimit-enabled: 0` | Rate limit đang tắt — nếu vẫn 429 thì **không phải** do lớp rate limit của app | Xem lại mục "External APIs" ở trên để phân biệt 429 của Groq |
 | `x-ratelimit-backend: bypass` xuất hiện ở mọi request | IP của bạn đang nằm trong `RATE_LIMIT_BYPASS_IPS`, hoặc bạn đang gửi `x-api-key` khớp `RATE_LIMIT_API_KEY` | Bình thường nếu bạn cố ý; bỏ biến nếu không muốn |
 | Muốn tắt hẳn để kiểm tra phần còn lại trước | Xoá/để trống `RATE_LIMIT_ENABLED` (mặc định là tắt) | Redeploy. **Đừng** dùng cách "đặt RATE_LIMIT_MAX=0" — đó không còn là cách tắt |
->>>>>>> 937fbcc (lastt)
 
 > 🔎 **Mẹo quan trọng khi tự kiểm thử:** sau khi sửa biến môi trường trên Vercel, **luôn redeploy** (Deployments → ⋯ → Redeploy, bỏ tích "Use existing Build Cache"). Biến môi trường chỉ được nạp lúc build/khởi động — sửa xong mà không deploy lại thì app vẫn chạy giá trị cũ, và bạn sẽ tưởng việc sửa không có tác dụng.
 
@@ -738,11 +749,7 @@ export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|unl
 
 **Mức 4 — Khoá API nhưng vẫn cho xem giao diện**
 
-<<<<<<< HEAD
-Nếu bạn muốn công khai trang giới thiệu mà không cho ai chat, hãy đặt `RATE_LIMIT_MAX=0` (xem §5.6).
-=======
 Nếu bạn muốn công khai trang giới thiệu mà không cho ai chat, hãy dùng công tắc khoá ở §5.6 (`RATE_LIMIT_KILL_SWITCH=1`).
->>>>>>> 937fbcc (lastt)
 
 ### 5.4. Kiểm tra "hàng rào đạo đức" sau khi đổi model
 
@@ -781,21 +788,13 @@ Nếu bạn phát hiện app đang bị đốt quota, hãy làm theo thứ tự 
 
 | Tình huống | Hành động | Thời gian hiệu lực |
 | --- | --- | --- |
-<<<<<<< HEAD
-| Bị spam, cần chặn ngay | Đặt `RATE_LIMIT_MAX=0` → **Redeploy** (mọi request nhận 429) | ~1 phút |
-=======
 | Bị spam, cần chặn ngay | Đặt `RATE_LIMIT_KILL_SWITCH=1` → **Redeploy** (mọi request nhận 429) | ~1 phút |
->>>>>>> 937fbcc (lastt)
 | Hết quota Groq tạm thời | Tạo key mới ở tài khoản khác, hoặc đổi `LLM_PROVIDER=openrouter` + `OPENROUTER_API_KEY` | ~1 phút |
 | Key bị lộ | Xoá key đó trong console nhà cung cấp (mọi request lập tức 401), rồi tạo key mới và cập nhật | Tức thì |
 | Cần đóng hoàn toàn | Vercel → **Settings → Deployment Protection** → bật **Vercel Authentication** | ~10 giây |
 | Nghi ngờ có người lạ dùng nhiều | Bật `ALLOWED_ORIGINS` (nếu có site khác) hoặc chuyển sang Mức 3 ở §5.3 | ~1 phút |
 
-<<<<<<< HEAD
-> 💡 **Vì sao `RATE_LIMIT_MAX=0` là công tắc hữu ích:** với giới hạn 0, request đầu tiên đã vượt hạn ⇒ toàn bộ `/api/chat` trả **429 + `Retry-After`** kèm lời nhắn tiếng Việt tử tế, trong khi trang web vẫn hiển thị bình thường. Người dùng thấy "Bestie đang nghỉ một chút" thay vì màn hình lỗi.
-=======
 > 💡 **Vì sao công tắc khoá là `RATE_LIMIT_KILL_SWITCH=1` chứ không phải `RATE_LIMIT_MAX=0`:** khi khoá, mọi request nhận **429 + `Retry-After`** kèm lời nhắn *"Trạm đang tạm đóng để bảo trì"*, trong khi trang web vẫn hiển thị bình thường. Trước đây việc khoá được thực hiện bằng cách đặt `RATE_LIMIT_MAX=0` — nhưng đó chính là nguồn của một sự cố production: biến bị để trống hoặc bằng 0 khiến app chặn **tất cả** người dùng vĩnh viễn mà không ai hiểu vì sao. Giờ "khoá" và "cấu hình sai" là hai việc hoàn toàn khác nhau, không thể lẫn.
->>>>>>> 937fbcc (lastt)
 
 ---
 
@@ -910,13 +909,6 @@ Cách hoạt động trong `lib/cors.ts`:
 
 | Biến | Bắt buộc? | Mặc định | Ý nghĩa |
 | --- | --- | --- | --- |
-<<<<<<< HEAD
-| `RATE_LIMIT_MAX` | ✅ nên đặt | `20` | Số request/IP/cửa sổ (`0` = khoá toàn bộ). Khuyến nghị khi public: `60` |
-| `RATE_LIMIT_WINDOW` | Không | `60` | Độ dài cửa sổ (giây) |
-| `RATE_LIMIT_DISABLED` | Không | — | `1` = tắt rate limit (chỉ dùng khi dev) |
-| `RATE_LIMIT_BYPASS_IPS` | Không | — | Danh sách IP được bỏ qua, phân tách bằng dấu phẩy (để tự test) |
-| `GLOBAL_DAILY_MAX` | Không | `0` (tắt) | Hạn mức **số lượt chat mỗi ngày cho cả app** — lớp bảo vệ quota thật. Cần Upstash |
-=======
 | `RATE_LIMIT_ENABLED` | Không | *(tắt)* | `1` = BẬT giới hạn theo IP. Không đặt = tắt |
 | `RATE_LIMIT_MAX` | Không | `600` | Số request/IP/cửa sổ. Giá trị rỗng/`0`/số âm/chữ → dùng lại `600` |
 | `RATE_LIMIT_WINDOW` | Không | `60` | Độ dài cửa sổ (giây) |
@@ -924,7 +916,6 @@ Cách hoạt động trong `lib/cors.ts`:
 | `RATE_LIMIT_BYPASS_IPS` | Không | — | Danh sách IP được bỏ qua, phân tách bằng dấu phẩy (để tự test) |
 | `RATE_LIMIT_API_KEY` | Không | — | Chuỗi bí mật; request gửi header `x-api-key` khớp sẽ bỏ qua rate limit |
 | `GLOBAL_DAILY_MAX` | Không | *(tắt)* | Hạn mức **số lượt chat mỗi ngày cho cả app** — lớp bảo vệ quota thật. Cần Upstash |
->>>>>>> 937fbcc (lastt)
 | `UPSTASH_REDIS_REST_URL` | Không | — | Bật rate limit chính xác + cho `GLOBAL_DAILY_MAX` hoạt động |
 | `UPSTASH_REDIS_REST_TOKEN` | Không | — | Token đi kèm |
 
@@ -949,15 +940,11 @@ Cách hoạt động trong `lib/cors.ts`:
 | Bestie nói *"Vui lên đi"* | Model nhỏ bám prompt kém | Đổi model lớn hơn; xem lại §5.4 |
 | Người dùng thứ N nhận *"nhắn nhanh quá"* dù mới nhắn lần đầu | Rate limit đếm theo IP; nhiều người dùng chung wifi/NAT ⇒ chung một IP | Tăng `RATE_LIMIT_MAX` hoặc cửa sổ; hoặc chấp nhận (an toàn hơn là mở toang) |
 | Header báo `x-ratelimit-backend: memory` dù đã thêm Upstash | Sai biến (dùng `UPSTASH_REDIS_URL` thay vì `..._REST_URL`) hoặc chưa redeploy | Kiểm tra lại tên biến trong Vercel, redeploy |
-<<<<<<< HEAD
-| Tất cả người dùng bị 429 | Có thể `RATE_LIMIT_MAX=0` còn sót lại | Sửa về `20` và redeploy |
-=======
 | Tất cả người dùng bị 429 cùng lúc | Đang bật `RATE_LIMIT_KILL_SWITCH=1`, hoặc bạn đã đặt `RATE_LIMIT_ENABLED=1` với hạn mức quá thấp | Kiểm tra `rateLimit.killSwitch` và `rateLimit.enabled` ở `/api/health`; bỏ kill switch hoặc tăng `RATE_LIMIT_MAX` (hoặc xoá `RATE_LIMIT_ENABLED` để tắt hẳn) rồi redeploy |
->>>>>>> 937fbcc (lastt)
 | Lỗi *"blocked by CORS policy"* | Frontend gọi URL tuyệt đối sang origin khác | Xem Phụ lục A — hoặc chuyển về đường dẫn tương đối `/api/chat` |
 | Tên miền mãi ở trạng thái `Invalid Configuration` | Bản ghi DNS sai/thiếu, hoặc còn bản ghi cũ xung đột | So lại **đúng giá trị Vercel hiển thị**, xoá bản ghi cũ, chờ lan truyền (dùng `dig`) |
 | Tên miền chạy nhưng báo lỗi chứng chỉ | Còn bật proxy (đám mây cam) của Cloudflare, hoặc mới đổi DNS | Tắt proxy (DNS only) cho bản ghi, đợi Vercel cấp lại chứng chỉ |
-| Build trên Vercel thất bại, ở máy thì chạy tốt | Thiếu biến môi trường lúc build, hoặc lệch phiên bản Node | Xem log build; đặt Node 22.x trong Settings → General |
+| Build trên Vercel thất bại, ở máy thì chạy tốt | Thiếu biến môi trường lúc build, lệch phiên bản Node, **hoặc còn sót conflict marker** | Xem log build. Nếu thấy *"Merge conflict marker encountered"*: chạy `node tools/check-conflicts.mjs` để biết file + số dòng rồi xoá marker. Nếu là lỗi Node: đặt Node 22.x trong Settings → General |
 | Vượt hạn mức Vercel | Quá nhiều request/băng thông trong tháng | Xem **Project → Usage**; đặt rate limit chặt hơn; cân nhắc Mức 3 ở §5.3 |
 
 **Xem log trên Vercel:** Project → **Logs** (hoặc Deployments → chọn deployment → **Functions**). Log của dự án chỉ chứa thông tin vận hành (`provider=… tokens_out=… reason=…`), **không** chứa nội dung tâm sự của người dùng — điều này là cố ý.
@@ -970,11 +957,7 @@ Cách hoạt động trong `lib/cors.ts`:
 
 - [ ] `GROQ_API_KEY` (hoặc key OpenRouter) đã thêm trên Vercel, cho **cả 3 môi trường**, và đã **redeploy**.
 - [ ] `/api/health` trả `ok: true` với `provider` đúng.
-<<<<<<< HEAD
-- [ ] `RATE_LIMIT_MAX` đã đặt (không để trống/mặc định khi URL đã công khai).
-=======
 - [ ] `RATE_LIMIT_ENABLED` chỉ được đặt nếu bạn thật sự muốn giới hạn (mặc định tắt là an toàn nhất).
->>>>>>> 937fbcc (lastt)
 - [ ] `.env.local` **không** có trong repo (`git ls-files | grep env` chỉ thấy `.env.example`).
 - [ ] Đã thử 4 câu kiểm tra hàng rào đạo đức ở §5.4 và Bestie hành xử đúng.
 - [ ] Trang web hiển thị nhãn ☁️ cloud để người dùng biết dữ liệu của họ đi đâu.
@@ -985,11 +968,7 @@ Cách hoạt động trong `lib/cors.ts`:
 - [ ] Chứng chỉ HTTPS đã xanh, `www` chuyển hướng về domain chính (đúng một hướng).
 - [ ] Đã đặt cảnh báo/usage limit trong console của Groq/OpenRouter.
 - [ ] Thêm đoạn giới thiệu ngắn ở đầu `README.md` hoặc trên trang web: *đây là ứng dụng tâm sự, không phải dịch vụ y tế* (dự án vốn có phần này trong README — hãy giữ nó ở bản public).
-<<<<<<< HEAD
-- [ ] Đã thử `RATE_LIMIT_MAX=0` một lần để biết công tắc khẩn cấp hoạt động (§5.6).
-=======
 - [ ] Đã mở `/api/health` và xác nhận mục `rateLimit` đúng như ý bạn (`enabled`, `killSwitch`).
->>>>>>> 937fbcc (lastt)
 - [ ] Đã biết cách rollback: **Deployments → bản cũ → Promote to Production**.
 
 **Sau khi công bố**

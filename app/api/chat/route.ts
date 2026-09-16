@@ -2,16 +2,12 @@ import { streamText } from 'ai';
 import { chatSettings, resolveProvider } from '@/lib/ai';
 import { getLlmStatus, type LlmStatus } from '@/lib/llm-status';
 import { SYSTEM_PROMPT } from '@/lib/system-prompt';
-<<<<<<< HEAD
-import { checkRateLimit, logRateLimitBlock, rateLimitHeaders } from '@/lib/rate-limit';
-=======
 import {
   checkRateLimit,
   logRateLimitBlock,
   rateLimitHeaders,
   reportConfigIssues,
 } from '@/lib/rate-limit';
->>>>>>> 937fbcc (lastt)
 import { corsHeaders, corsPreflightResponse } from '@/lib/cors';
 
 /**
@@ -171,37 +167,17 @@ export async function OPTIONS(request: Request) {
 export async function POST(request: Request) {
   const cors = corsHeaders(request);
 
-<<<<<<< HEAD
-  // ---------- 1. Rate limit ----------
-=======
   // Báo ra log nếu biến môi trường bị đặt sai kiểu (ví dụ RATE_LIMIT_MAX để trống).
   // Không ném lỗi, không chặn — chỉ để người vận hành biết mình vừa viết sai gì.
   reportConfigIssues();
 
   // ---------- 1. Rate limit (MẶC ĐỊNH TẮT — chỉ chạy khi RATE_LIMIT_ENABLED=1) ----------
->>>>>>> 937fbcc (lastt)
   const limit = await checkRateLimit(request);
   if (!limit.ok) {
     // Ghi log để người VẬN HÀNH biết vì sao bị chặn (người dùng chỉ thấy 429).
     // Thiếu dòng log này, mọi sự cố 429 đều trở thành một câu đố.
     await logRateLimitBlock(request, limit);
 
-<<<<<<< HEAD
-    // Hai lý do chặn rất khác nhau, nên thông điệp cũng phải khác:
-    //  - 'per-ip'      → người dùng nhắn quá nhanh, chỉ cần chờ.
-    //  - 'global-daily'→ cả trạm đã dùng hết hạn mức trong ngày, chờ cũng vô ích.
-    const isGlobal = limit.reason === 'global-daily';
-
-    return errorResponse(
-      {
-        error: isGlobal
-          ? 'Hôm nay trạm đã sạc hết "pin" rồi cậu ạ 🔋'
-          : 'Cậu nhắn nhanh quá, tớ cần một chút để "thở" 🍵',
-        hint: isGlobal
-          ? 'Trạm có giới hạn số lượt mỗi ngày để không đốt hết quota miễn phí. Cậu quay lại sau nhé — tớ vẫn ở đây.'
-          : `Cậu chờ khoảng ${limit.resetSeconds} giây rồi nhắn tiếp nhé. Chuyện của cậu tớ vẫn nhớ mà.`,
-        // Cho biết chính xác cơ chế nào chặn — hữu ích khi bạn tự debug bằng curl.
-=======
     // Mỗi lý do chặn cần một thông điệp khác nhau, vì cách xử lý của người dùng
     // khác nhau: chờ 60 giây, chờ tới mai, hay báo cho bạn (người vận hành).
     const isGlobal = limit.reason === 'global-daily';
@@ -224,7 +200,6 @@ export async function POST(request: Request) {
         error,
         hint,
         // Cho biết chính xác cơ chế nào chặn — hữu ích khi tự debug bằng curl.
->>>>>>> 937fbcc (lastt)
         detail:
           `rate-limit reason=${limit.reason ?? 'per-ip'} backend=${limit.backend} ` +
           `limit=${limit.limit} window=${limit.resetSeconds}s`,
